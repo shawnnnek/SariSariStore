@@ -218,6 +218,12 @@ button.wide { width: 100%; margin-top: 16px; }
   border-bottom: 1px solid var(--border);
 }
 .product-row:last-child { border-bottom: none; }
+.product-row { cursor: pointer; }
+.product-row:active { background: var(--soft); }
+.tap-hint { margin: -4px 0 10px; }
+.danger-links { display: flex; flex-direction: column; align-items: flex-start; }
+.danger-links .link-btn { margin-top: 12px; }
+.error-text { color: var(--text); font-weight: 600; min-height: 18px; }
 .product-main { flex: 1; min-width: 0; }
 .product-name { font-size: 15px; font-weight: 600; }
 .product-code { font-size: 12px; color: var(--muted); }
@@ -234,6 +240,90 @@ button.wide { width: 100%; margin-top: 16px; }
 }
 .restock { background: var(--dark); color: #fff; }
 .ok-status { background: var(--soft); color: var(--muted); }
+
+/* ---------- Today tab ---------- */
+.stat-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; }
+.stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+.stat-value { font-size: 22px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+.today-list { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+.txn { padding: 12px; border-bottom: 1px solid var(--border); }
+.txn:last-child { border-bottom: none; }
+.txn-head { display: flex; justify-content: space-between; align-items: baseline; }
+.txn-time { font-size: 13px; color: var(--muted); }
+.txn-total { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.txn-items { list-style: none; margin: 6px 0 0; padding: 0; font-size: 14px; }
+.txn-items li { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+.txn-items .line-amount { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.txn-pay { margin-top: 6px; font-size: 12px; color: var(--muted); }
+
+/* ---------- Stat boxes: second rows ---------- */
+.stat-row + .stat-row { margin-top: 10px; }
+.stat-row.small { grid-template-columns: repeat(3, 1fr); }
+.stat-row.small .stat-value { font-size: 16px; white-space: nowrap; }
+.stat-row.two { grid-template-columns: 1.4fr 1fr; }
+.stat { min-width: 0; }
+#stat-hint { margin-top: 10px; }
+
+/* ---------- GCash & Maya ---------- */
+.wallet-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.wallet-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 84px;
+  padding: 12px;
+  text-align: left;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.wallet-name { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); }
+.wallet-bal { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wallet-sub { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+.seg { display: flex; margin: 14px 0 4px; border: 1px solid #cfccc4; border-radius: 10px; overflow: hidden; }
+.seg button { flex: 1; border-radius: 0; border: none; background: #fff; color: var(--text); }
+.seg button.active { background: var(--dark); color: #fff; }
+
+select {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid #d3d0c8;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.wallet-summary { margin-top: 12px; padding: 10px 12px; background: var(--soft); border-radius: 10px; }
+.sum-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 3px 0; font-size: 14px; color: var(--muted); }
+.sum-row strong { font-size: 18px; color: var(--text); font-variant-numeric: tabular-nums; }
+
+.tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  vertical-align: middle;
+}
+.tag.dark { background: var(--dark); color: #fff; }
+.txn.muted { opacity: 0.75; }
+
+/* ---------- Utang ---------- */
+#debt-search { margin-bottom: 10px; }
+.debt-row .pill { white-space: nowrap; }
+#debt-entries .txn-time { font-size: 12px; }
 
 /* ---------- Add-product form ---------- */
 .add-form { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 14px 16px; }
@@ -299,6 +389,7 @@ button.wide { width: 100%; margin-top: 16px; }
   border-radius: 16px 16px 0 0;
   padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
 }
+.sheet { max-height: 92vh; overflow-y: auto; }
 .sheet h2 { margin-top: 0; }
 .sheet-total { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
 .sheet-total strong { font-size: 34px; color: var(--text); letter-spacing: 0; font-variant-numeric: tabular-nums; }

@@ -19,10 +19,26 @@ const PRODUCTS_KEY = "pos_products";
 const SALES_KEY = "pos_sales";
 const LAST_BACKUP_KEY = "pos_last_backup";
 
+const EWALLET_KEY = "pos_ewallet";        // GCash / Maya balances and settings
+const EWALLET_TX_KEY = "pos_ewallet_tx";  // every GCash / Maya cash in, cash out and balance change
+const LEDGER_KEY = "pos_utang";           // utang: charges and payments
+
+// Starting values for GCash / Maya. Your numbers are typed in the app (Products tab),
+// NOT written here, because this code is public on GitHub.
+const DEFAULT_EWALLET = {
+  gcash: { numbers: "", balance: 0 },
+  maya:  { numbers: "", balance: 0 },
+  cashOutFee: "deduct"
+};
+
 // Variables that hold the data while the page is open.
 let products = loadData(PRODUCTS_KEY, DEFAULT_PRODUCTS);
 let sales = loadData(SALES_KEY, []);   // finished sales
 let cart = [];                          // items in the sale happening right now
+let ewallet = loadData(EWALLET_KEY, DEFAULT_EWALLET);
+let ewalletTx = loadData(EWALLET_TX_KEY, []);
+let ledger = loadData(LEDGER_KEY, []);
+normalizeEwallet();
 
 
 /* ---------- 2. SAVING AND LOADING ---------- */
@@ -45,6 +61,9 @@ function saveData() {
   try {
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
     localStorage.setItem(SALES_KEY, JSON.stringify(sales));
+    localStorage.setItem(EWALLET_KEY, JSON.stringify(ewallet));
+    localStorage.setItem(EWALLET_TX_KEY, JSON.stringify(ewalletTx));
+    localStorage.setItem(LEDGER_KEY, JSON.stringify(ledger));
   } catch (error) {
     console.log("Could not save", error);
   }
@@ -55,7 +74,13 @@ function saveData() {
 
 // Turn 12 into "₱12.00"
 function peso(amount) {
-  return "₱" + amount.toFixed(2);
+  // 1234.5 becomes "₱1,234.50"
+  return "₱" + amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Like peso(), but a whole amount drops the ".00": 1500 becomes "₱1,500"
+function pesoShort(amount) {
+  return Number.isInteger(amount) ? "₱" + amount.toLocaleString("en-US") : peso(amount);
 }
 
 // Make text safe before putting it into the page
@@ -204,7 +229,8 @@ function cartItemCount() {
 /* ---------- 5. CHARGING ---------- */
 
 // cash can be NaN (not typed). That's fine; we just don't record change then.
-function chargeSale(cash) {
+// utang is { name, takenBy } when the sale is charged to utang instead of paid in cash.
+function chargeSale(cash, utang) {
   if (cart.length === 0) {
     return;
   }
@@ -218,6 +244,7 @@ function chargeSale(cash) {
   });
 
   const sale = {
+    ts: Date.now(),
     date: todayText(),
     time: new Date().toLocaleTimeString(),
     total: total,
@@ -225,7 +252,16 @@ function chargeSale(cash) {
       return { barcode: item.barcode, name: item.name, qty: item.qty, price: item.price };
     })
   };
-  if (!isNaN(cash)) {
+  if (utang) {
+    // Not paid yet: remember who owes it, and add a charge to the utang ledger.
+    sale.utang = { name: utang.name, takenBy: utang.takenBy };
+    ledger.push({
+      ts: sale.ts, date: sale.date, time: sale.time,
+      name: utang.name, takenBy: utang.takenBy,
+      type: "charge", amount: total,
+      items: sale.items.map(function (i) { return Object.assign({}, i); })
+    });
+  } else if (!isNaN(cash)) {
     sale.cash = cash;
     sale.change = cash - total;
   }
@@ -233,8 +269,12 @@ function chargeSale(cash) {
 
   saveData();
 
-  const changeText = isNaN(cash) ? "" : " Change: " + peso(cash - total);
-  showMessage("Sale complete: " + peso(total) + "." + changeText, "ok");
+  if (utang) {
+    showMessage("Charged to utang: " + utang.name + " " + peso(total) + ".", "ok");
+  } else {
+    const changeText = isNaN(cash) ? "" : " Change: " + peso(cash - total);
+    showMessage("Sale complete: " + peso(total) + "." + changeText, "ok");
+  }
 
   cart = [];
   renderAll();
@@ -322,7 +362,7 @@ function renderProducts() {
       ? '<span class="pill restock">RESTOCK</span>'
       : '<span class="pill ok-status">OK</span>';
 
-    html += '<div class="product-row">' +
+    html += '<div class="product-row" data-barcode="' + escapeHtml(p.barcode) + '">' +
       '<div class="product-main"><div class="product-name">' + escapeHtml(p.name) + "</div>" +
       '<div class="product-code">' + escapeHtml(p.barcode) + "</div></div>" +
       '<div class="product-nums"><div>' + peso(p.price) + "</div>" +
@@ -337,38 +377,178 @@ function renderProducts() {
   document.getElementById("product-list").innerHTML = html;
 }
 
-// Today's total sales and number of sales shown at the top of the page
+// Today's total and number of transactions shown at the top of the page
 function renderSummary() {
-  const today = todayText();
-  let total = 0;
-  let count = 0;
+  const stats = todayStats();
+  document.getElementById("today-total").textContent = peso(stats.total);
+  document.getElementById("today-count").textContent = stats.count;
+}
 
-  sales.forEach(function (sale) {
+// Everything that happened today, newest first:
+// product sales, GCash/Maya, utang payments received, and wallet balance changes.
+function todayEvents() {
+  const today = todayText();
+  const events = [];
+
+  sales.forEach(function (sale, index) {
     if (sale.date === today) {
-      total = total + sale.total;
-      count = count + 1;
+      events.push({ kind: "sale", ts: sale.ts || 0, order: index, data: sale });
+    }
+  });
+  ewalletTx.forEach(function (tx, index) {
+    if (tx.date === today) {
+      events.push({ kind: tx.type === "adjust" ? "adjust" : "wallet", ts: tx.ts || 0, order: index, data: tx });
+    }
+  });
+  ledger.forEach(function (entry, index) {
+    if (entry.type === "payment" && entry.date === today) {
+      events.push({ kind: "payment", ts: entry.ts || 0, order: index, data: entry });
     }
   });
 
-  document.getElementById("today-total").textContent = peso(total);
-  document.getElementById("today-count").textContent = count;
+  // newest first (older records without a timestamp go last, in the order they were saved)
+  events.sort(function (a, b) {
+    return (b.ts - a.ts) || (b.order - a.order);
+  });
+  return events;
+}
+
+// Today's numbers.
+// Total = sales paid in cash + GCash/Maya fees + utang payments received.
+// Sales charged to utang are NOT in the total until the person pays.
+function todayStats() {
+  const stats = { total: 0, count: 0, items: 0, fees: 0, cashIn: 0, cashOut: 0, utangCharged: 0 };
+
+  todayEvents().forEach(function (event) {
+    const d = event.data;
+    if (event.kind === "sale") {
+      stats.count++;
+      d.items.forEach(function (item) { stats.items += item.qty; });
+      if (d.utang) {
+        stats.utangCharged += d.total;
+      } else {
+        stats.total += d.total;
+      }
+    } else if (event.kind === "wallet") {
+      stats.count++;
+      stats.fees += d.fee;
+      stats.total += d.fee;
+      if (d.type === "in") { stats.cashIn += d.amount; } else { stats.cashOut += d.amount; }
+    } else if (event.kind === "payment") {
+      stats.count++;
+      stats.total += d.amount;
+    }
+  });
+
+  Object.keys(stats).forEach(function (key) {
+    stats[key] = round2(stats[key]);
+  });
+  return stats;
+}
+
+// The Today tab
+function renderToday() {
+  const stats = todayStats();
+  document.getElementById("stat-total").textContent = peso(stats.total);
+  document.getElementById("stat-count").textContent = stats.count;
+  document.getElementById("stat-items").textContent = stats.items;
+  // whole pesos are shown without ".00" so the small boxes stay readable
+  document.getElementById("stat-fees").textContent = pesoShort(stats.fees);
+  document.getElementById("stat-cashin").textContent = pesoShort(stats.cashIn);
+  document.getElementById("stat-cashout").textContent = pesoShort(stats.cashOut);
+  document.getElementById("stat-hint").textContent =
+    "Total = cash sales + GCash/Maya fees + utang payments received." +
+    (stats.utangCharged > 0 ? " Charged to utang today (" + peso(stats.utangCharged) + ") is not in the total." : "");
+
+  let html = "";
+
+  todayEvents().forEach(function (event) {
+    const d = event.data;
+
+    if (event.kind === "sale") {
+      let lines = "";
+      d.items.forEach(function (item) {
+        lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span>" +
+          '<span class="line-amount">' + peso(item.price * item.qty) + "</span></li>";
+      });
+
+      let pay = "";
+      let tag = "";
+      if (d.utang) {
+        tag = '<span class="tag dark">UTANG &middot; ' + escapeHtml(d.utang.name) + "</span>";
+        pay = '<div class="txn-pay">Charged to utang' +
+          (d.utang.takenBy ? " &middot; taken by " + escapeHtml(d.utang.takenBy) : "") + "</div>";
+      } else if (typeof d.cash === "number") {
+        // older sales may not have cash/change saved
+        pay = '<div class="txn-pay">Cash ' + peso(d.cash) + " &middot; Change " + peso(d.change) + "</div>";
+      }
+
+      html += '<div class="txn">' +
+        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + tag + "</span>" +
+        '<span class="txn-total">' + peso(d.total) + "</span></div>" +
+        '<ul class="txn-items">' + lines + "</ul>" + pay + "</div>";
+
+    } else if (event.kind === "wallet") {
+      const label = WALLET_NAMES[d.wallet] + " &middot; " + (d.type === "in" ? "Cash in" : "Cash out");
+      const cashText = d.cashDelta >= 0
+        ? "Customer gave " + peso(d.cashDelta)
+        : "Gave customer " + peso(-d.cashDelta);
+      html += '<div class="txn">' +
+        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag dark">' + label + "</span></span>" +
+        '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
+        '<div class="txn-pay">Fee ' + peso(d.fee) + " &middot; " + cashText + "</div></div>";
+
+    } else if (event.kind === "payment") {
+      html += '<div class="txn">' +
+        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag dark">UTANG PAYMENT</span></span>' +
+        '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
+        '<div class="txn-pay">From ' + escapeHtml(d.name) + "</div></div>";
+
+    } else if (event.kind === "adjust") {
+      html += '<div class="txn muted">' +
+        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag">' + WALLET_NAMES[d.wallet] + " balance changed</span></span>" +
+        '<span class="txn-pay">' + (d.walletDelta >= 0 ? "+" : "&minus;") + peso(Math.abs(d.walletDelta)) + "</span></div>" +
+        '<div class="txn-pay">New balance ' + peso(d.balanceAfter) + "</div></div>";
+    }
+  });
+
+  if (html === "") {
+    html = '<p class="empty">Nothing yet today.</p>';
+  }
+  document.getElementById("today-list").innerHTML = html;
 }
 
 function renderAll() {
   renderSell();
   renderProducts();
+  renderWallets();
+  renderUtang();
   renderSummary();
+  renderToday();
 }
 
 
 /* ---------- 7. TABS ---------- */
 
 function showView(name) {
-  document.getElementById("view-sell").hidden = name !== "sell";
-  document.getElementById("view-products").hidden = name !== "products";
+  const views = ["sell", "today", "utang", "products"];
+  views.forEach(function (v) {
+    document.getElementById("view-" + v).hidden = name !== v;
+    document.getElementById("tab-" + v).classList.toggle("active", name === v);
+  });
   document.getElementById("checkout-bar").hidden = name !== "sell";
-  document.getElementById("tab-sell").classList.toggle("active", name === "sell");
-  document.getElementById("tab-products").classList.toggle("active", name === "products");
+
+  // Refresh so the date and totals are right even if the page was left open overnight
+  if (name === "today") {
+    renderToday();
+    renderSummary();
+  }
+  if (name === "utang") {
+    renderUtang();
+  }
+  if (name === "products") {
+    fillWalletSettings();
+  }
   window.scrollTo(0, 0);
 }
 
@@ -589,7 +769,7 @@ async function openScanner(mode) {
       onScanSuccess,
       function () {}                                      // called on every frame with no barcode: ignore
     );
-    setScannerStatus(mode === "fill" ? "Point the camera at the barcode." : "Point the camera at a barcode. It keeps scanning until you tap Done.");
+    setScannerStatus(mode === "sell" ? "Point the camera at a barcode. It keeps scanning until you tap Done." : "Point the camera at the barcode.");
   } catch (error) {
     scanner = null;
     setScannerStatus("Couldn't open the camera. Allow camera access for this page (iPhone: Settings > Safari > Camera), then try again.");
@@ -616,8 +796,10 @@ function onScanSuccess(code) {
   lastScanCode = code;
   lastScanTime = now;
 
-  if (scannerMode === "fill") {
-    document.getElementById("new-barcode").value = code;
+  if (scannerMode === "fill" || scannerMode === "edit") {
+    // fill the barcode box of the Add form, or of the Edit sheet, then close the camera
+    const boxId = scannerMode === "fill" ? "new-barcode" : "edit-barcode";
+    document.getElementById(boxId).value = code;
     beep(true);
     closeScanner();
     return;
@@ -647,13 +829,18 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
     return;
   }
 
+  // If the "Restock at" box was left empty, use 5
+  let reorder = parseInt(document.getElementById("new-reorder").value, 10);
+  if (isNaN(reorder)) {
+    reorder = 5;
+  }
+
   products.push({
     barcode: barcode,
     name: name,
     price: parseFloat(document.getElementById("new-price").value),
     stock: parseInt(document.getElementById("new-stock").value, 10),
-    // "|| 5" means: if the box was left empty, use 5
-    reorder: parseInt(document.getElementById("new-reorder").value, 10) || 5
+    reorder: reorder
   });
 
   saveData();
@@ -663,16 +850,601 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
 });
 
 
+/* ---------- 11b. EDIT AND DELETE A PRODUCT ----------
+   Tap a product in the Products tab to open the Edit sheet. */
+
+let editingBarcode = null;   // which product is being edited right now
+
+function openEdit(barcode) {
+  const product = products.find(function (p) { return p.barcode === barcode; });
+  if (!product) {
+    return;
+  }
+  editingBarcode = product.barcode;
+  document.getElementById("edit-name").value = product.name;
+  document.getElementById("edit-barcode").value = product.barcode;
+  document.getElementById("edit-price").value = product.price;
+  document.getElementById("edit-stock").value = product.stock;
+  document.getElementById("edit-reorder").value = product.reorder;
+  document.getElementById("edit-message").textContent = "";
+  document.getElementById("edit-overlay").hidden = false;
+}
+
+function closeEdit() {
+  editingBarcode = null;
+  document.getElementById("edit-overlay").hidden = true;
+}
+
+function saveEdit() {
+  const product = products.find(function (p) { return p.barcode === editingBarcode; });
+  if (!product) {
+    closeEdit();
+    return;
+  }
+
+  const message = document.getElementById("edit-message");
+  const newBarcode = document.getElementById("edit-barcode").value.trim();
+
+  // The new barcode must not belong to a different product.
+  const other = findProduct(newBarcode);
+  if (other && other !== product) {
+    message.textContent = "Another product already uses that barcode: " + other.name;
+    return;
+  }
+
+  const oldBarcode = product.barcode;
+  product.name = document.getElementById("edit-name").value.trim();
+  product.barcode = newBarcode;
+  product.price = parseFloat(document.getElementById("edit-price").value);
+  product.stock = parseInt(document.getElementById("edit-stock").value, 10);
+  product.reorder = parseInt(document.getElementById("edit-reorder").value, 10);
+
+  // If this product is in the current sale, update that line too.
+  const line = cart.find(function (item) { return item.barcode === oldBarcode; });
+  if (line) {
+    line.barcode = product.barcode;
+    line.name = product.name;
+    line.price = product.price;
+    if (line.qty > product.stock) {
+      line.qty = product.stock;                      // can't sell more than we now have
+    }
+    cart = cart.filter(function (item) { return item.qty > 0; });
+  }
+
+  saveData();
+  renderAll();
+  closeEdit();
+}
+
+function deleteProduct() {
+  const product = products.find(function (p) { return p.barcode === editingBarcode; });
+  if (!product) {
+    closeEdit();
+    return;
+  }
+  if (!confirm("Delete " + product.name + "?\n\nYour past sales records are kept.")) {
+    return;
+  }
+  products = products.filter(function (p) { return p !== product; });
+  cart = cart.filter(function (item) { return item.barcode !== product.barcode; });
+  saveData();
+  renderAll();
+  closeEdit();
+}
+
+document.getElementById("product-list").addEventListener("click", function (event) {
+  const row = event.target.closest(".product-row");
+  if (row) {
+    openEdit(row.getAttribute("data-barcode"));
+  }
+});
+
+document.getElementById("edit-form").addEventListener("submit", function (event) {
+  event.preventDefault();
+  saveEdit();
+});
+document.getElementById("edit-cancel").addEventListener("click", closeEdit);
+document.getElementById("edit-delete").addEventListener("click", deleteProduct);
+document.getElementById("edit-scan-btn").addEventListener("click", function () { openScanner("edit"); });
+
+// Delete everything (the sample products too) and start with an empty list
+document.getElementById("empty-btn").addEventListener("click", function () {
+  if (confirm("Delete ALL products and sales and start with an empty list?\n\nGCash/Maya and utang records are kept.\nSave a backup first if you want to keep anything.")) {
+    products = [];
+    sales = [];
+    cart = [];
+    saveData();
+    renderAll();
+  }
+});
+
+
+/* ---------- 11c. GCASH AND MAYA ----------
+   The "stock" of GCash / Maya is the money in your wallet (the balance).
+   Cash in  = the customer gives you cash, you send e-money  -> balance goes DOWN
+   Cash out = you give the customer cash, they send e-money  -> balance goes UP */
+
+const WALLET_NAMES = { gcash: "GCash", maya: "Maya" };
+let walletInUse = "gcash";   // which wallet the sheet is open for
+let walletMode = "in";       // "in" (cash in) or "out" (cash out)
+let feeEdited = false;       // true after you type your own fee
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+// Round to centavos so numbers like 0.1 + 0.2 don't show up as 0.30000000000000004
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+// Make sure the saved wallet data has every field (also fixes data from a backup)
+function normalizeEwallet() {
+  ["gcash", "maya"].forEach(function (name) {
+    const w = ewallet[name] || {};
+    ewallet[name] = {
+      numbers: typeof w.numbers === "string" ? w.numbers : "",
+      balance: typeof w.balance === "number" ? w.balance : 0
+    };
+  });
+  if (ewallet.cashOutFee !== "extra") {
+    ewallet.cashOutFee = "deduct";
+  }
+}
+
+// THE FEE RULE (same for GCash and Maya, cash in and cash out):
+//   every full 1,000 costs 15, and the leftover part costs
+//   10 if it is 1-500, or 15 if it is 501-999.
+//   Examples: 300 = 10, 500 = 10, 501 = 15, 1000 = 15, 1500 = 25, 2400 = 40, 2600 = 45
+function walletFee(amount) {
+  if (!(amount > 0)) {
+    return 0;
+  }
+  const thousands = Math.floor(amount / 1000);
+  const rest = amount - thousands * 1000;
+  let restFee = 0;
+  if (rest > 0 && rest <= 500) {
+    restFee = 10;
+  } else if (rest > 500) {
+    restFee = 15;
+  }
+  return thousands * 15 + restFee;
+}
+
+// What a transaction does to the wallet balance and to the cash in your drawer.
+function walletEffects(mode, amount, fee) {
+  if (mode === "in") {
+    // customer pays amount + fee in cash, wallet sends out the amount
+    return { wallet: round2(-amount), cash: round2(amount + fee) };
+  }
+  if (ewallet.cashOutFee === "extra") {
+    // customer sends amount + fee to your wallet, you hand over the full amount
+    return { wallet: round2(amount + fee), cash: round2(-amount) };
+  }
+  // fee is taken from the cash: customer sends the amount, you hand over amount - fee
+  return { wallet: round2(amount), cash: round2(-(amount - fee)) };
+}
+
+function renderWallets() {
+  byId("bal-gcash").textContent = peso(ewallet.gcash.balance);
+  byId("bal-maya").textContent = peso(ewallet.maya.balance);
+}
+
+function openWallet(name) {
+  walletInUse = name;
+  feeEdited = false;
+  byId("wallet-title").textContent = WALLET_NAMES[name];
+  const numbers = ewallet[name].numbers.trim();
+  byId("wallet-numbers").textContent = numbers
+    ? "Number: " + numbers
+    : "No number saved yet. Add it in the Products tab, under GCash & Maya settings.";
+  byId("wallet-amount").value = "";
+  byId("wallet-fee").value = "";
+  setWalletMode("in");
+  byId("wallet-overlay").hidden = false;
+  if (hasMouse()) {
+    byId("wallet-amount").focus();
+  }
+}
+
+function closeWallet() {
+  byId("wallet-overlay").hidden = true;
+}
+
+function setWalletMode(mode) {
+  walletMode = mode;
+  byId("mode-in").classList.toggle("active", mode === "in");
+  byId("mode-out").classList.toggle("active", mode === "out");
+  byId("mode-hint").textContent = mode === "in"
+    ? "Cash in: the customer hands you cash and you send it to their wallet."
+    : "Cash out: you hand the customer cash and they send it to your wallet.";
+  updateWalletSheet();
+}
+
+function signedPeso(n) {
+  return (n >= 0 ? "+" : "−") + peso(Math.abs(n));
+}
+
+// Recalculate the fee, the summary and any error every time something changes
+function updateWalletSheet() {
+  const name = walletInUse;
+  const amountBox = byId("wallet-amount");
+  const feeBox = byId("wallet-fee");
+  const amount = parseFloat(amountBox.value);
+  const hasAmount = !isNaN(amount) && amount > 0;
+
+  if (!feeEdited) {
+    feeBox.value = hasAmount ? walletFee(amount) : "";
+  }
+  const fee = parseFloat(feeBox.value);
+  const balance = ewallet[name].balance;
+  byId("wallet-balance").textContent = peso(balance);
+
+  let error = "";
+  if (hasAmount) {
+    if (isNaN(fee) || fee < 0) {
+      error = "Enter the fee (0 or more).";
+    } else if (walletMode === "in" && amount > balance) {
+      error = "Not enough in your " + WALLET_NAMES[name] + " balance (" + peso(balance) + ").";
+    } else if (walletMode === "out" && ewallet.cashOutFee === "deduct" && fee > amount) {
+      error = "The fee is bigger than the amount.";
+    }
+  }
+  const ok = hasAmount && error === "";
+
+  if (ok) {
+    const effect = walletEffects(walletMode, round2(amount), round2(fee));
+    byId("sum-cash-label").textContent = effect.cash >= 0 ? "Customer gives you" : "Give the customer";
+    byId("sum-cash").textContent = peso(Math.abs(effect.cash));
+    byId("sum-change").textContent = signedPeso(effect.wallet);
+    byId("sum-wallet").textContent = peso(round2(balance + effect.wallet));
+  } else {
+    byId("sum-cash-label").textContent = walletMode === "in" ? "Customer gives you" : "Give the customer";
+    byId("sum-cash").textContent = "-";
+    byId("sum-change").textContent = "-";
+    byId("sum-wallet").textContent = "-";
+  }
+
+  byId("wallet-error").textContent = error;
+  byId("wallet-confirm").disabled = !ok;
+}
+
+function completeWallet() {
+  const name = walletInUse;
+  const amount = round2(parseFloat(byId("wallet-amount").value));
+  const fee = round2(parseFloat(byId("wallet-fee").value));
+
+  // the same checks as above, in case the button was pressed anyway
+  if (!(amount > 0) || isNaN(fee) || fee < 0) {
+    return;
+  }
+  if (walletMode === "in" && amount > ewallet[name].balance) {
+    return;
+  }
+
+  const effect = walletEffects(walletMode, amount, fee);
+  const balanceAfter = round2(ewallet[name].balance + effect.wallet);
+
+  ewalletTx.push({
+    ts: Date.now(),
+    date: todayText(),
+    time: new Date().toLocaleTimeString(),
+    wallet: name,
+    type: walletMode,
+    amount: amount,
+    fee: fee,
+    walletDelta: effect.wallet,
+    cashDelta: effect.cash,
+    balanceAfter: balanceAfter
+  });
+  ewallet[name].balance = balanceAfter;
+  saveData();
+
+  const handText = effect.cash >= 0 ? "Collect " + peso(effect.cash) : "Give " + peso(-effect.cash);
+  closeWallet();
+  renderAll();
+  showMessage(WALLET_NAMES[name] + (walletMode === "in" ? " cash in " : " cash out ") + peso(amount) +
+              " done. " + handText + ".", "ok");
+}
+
+// Settings on the Products tab: numbers, balances, cash-out style
+function fillWalletSettings() {
+  byId("set-gcash-numbers").value = ewallet.gcash.numbers;
+  byId("set-gcash-balance").value = ewallet.gcash.balance;
+  byId("set-maya-numbers").value = ewallet.maya.numbers;
+  byId("set-maya-balance").value = ewallet.maya.balance;
+  byId("set-cashout-mode").value = ewallet.cashOutFee;
+}
+
+function saveWalletSettings() {
+  const message = byId("wallet-settings-msg");
+
+  // check both balances first, so nothing is half-saved
+  const typed = {};
+  let problem = "";
+  ["gcash", "maya"].forEach(function (name) {
+    const value = parseFloat(byId("set-" + name + "-balance").value);
+    if (isNaN(value) || value < 0) {
+      problem = "Type a balance of 0 or more for " + WALLET_NAMES[name] + ".";
+    }
+    typed[name] = value;
+  });
+  if (problem) {
+    message.textContent = problem;
+    return;
+  }
+
+  ["gcash", "maya"].forEach(function (name) {
+    ewallet[name].numbers = byId("set-" + name + "-numbers").value.trim();
+    const newBalance = round2(typed[name]);
+    const difference = round2(newBalance - ewallet[name].balance);
+    if (difference !== 0) {
+      // keep a record of every manual change, so the balance can always be explained
+      ewalletTx.push({
+        ts: Date.now(), date: todayText(), time: new Date().toLocaleTimeString(),
+        wallet: name, type: "adjust", amount: difference, fee: 0,
+        walletDelta: difference, cashDelta: 0, balanceAfter: newBalance
+      });
+      ewallet[name].balance = newBalance;
+    }
+  });
+  ewallet.cashOutFee = byId("set-cashout-mode").value === "extra" ? "extra" : "deduct";
+
+  saveData();
+  renderAll();
+  fillWalletSettings();
+  message.textContent = "Saved.";
+}
+
+document.querySelectorAll(".wallet-tile").forEach(function (button) {
+  button.addEventListener("click", function () {
+    openWallet(button.getAttribute("data-wallet"));
+  });
+});
+byId("mode-in").addEventListener("click", function () { setWalletMode("in"); });
+byId("mode-out").addEventListener("click", function () { setWalletMode("out"); });
+byId("wallet-amount").addEventListener("input", function () {
+  feeEdited = false;                 // a new amount means a new automatic fee
+  updateWalletSheet();
+});
+byId("wallet-fee").addEventListener("input", function () {
+  feeEdited = true;                  // the fee was typed by hand: leave it alone
+  updateWalletSheet();
+});
+byId("wallet-form").addEventListener("submit", function (event) {
+  event.preventDefault();
+  completeWallet();
+});
+byId("wallet-cancel").addEventListener("click", closeWallet);
+byId("save-wallet-settings").addEventListener("click", saveWalletSettings);
+
+
+/* ---------- 11d. UTANG ----------
+   The utang "ledger" is a list of entries:
+   a "charge" (items taken, amount) or a "payment" (money received).
+   What a person owes = all their charges minus all their payments. */
+
+// "Juan  Cruz" and "juan cruz" count as the same person
+function debtKey(name) {
+  return String(name).trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// Group the ledger by person. Returns a list of { key, name, balance, last, entries }.
+function debtBook() {
+  const people = {};
+  ledger.forEach(function (entry) {
+    const key = debtKey(entry.name);
+    if (!people[key]) {
+      people[key] = { key: key, name: entry.name, balance: 0, last: 0, entries: [] };
+    }
+    const person = people[key];
+    person.balance = round2(person.balance + (entry.type === "charge" ? entry.amount : -entry.amount));
+    person.last = Math.max(person.last, entry.ts || 0);
+    person.entries.push(entry);
+  });
+  return Object.keys(people).map(function (key) { return people[key]; });
+}
+
+function renderUtang() {
+  const people = debtBook();
+
+  let owed = 0;
+  let owing = 0;
+  people.forEach(function (p) {
+    if (p.balance > 0) {
+      owed += p.balance;
+      owing++;
+    }
+  });
+  byId("debt-total").textContent = peso(round2(owed));
+  byId("debt-people").textContent = owing + (owing === 1 ? " person" : " people");
+
+  // suggestions while typing a name in the "Charge to utang" sheet
+  byId("utang-names").innerHTML = people.map(function (p) {
+    return '<option value="' + escapeHtml(p.name) + '"></option>';
+  }).join("");
+
+  const query = byId("debt-search").value.trim().toLowerCase();
+  const shown = people
+    .filter(function (p) { return query === "" || p.name.toLowerCase().includes(query); })
+    .sort(function (a, b) {
+      // people who still owe come first, biggest amount first
+      return ((b.balance > 0) - (a.balance > 0)) || (b.balance - a.balance) || (b.last - a.last);
+    });
+
+  let html = "";
+  shown.forEach(function (p) {
+    const lastEntry = p.entries[p.entries.length - 1];
+    const status = p.balance > 0
+      ? '<div class="product-nums"><div>' + peso(p.balance) + "</div></div>"
+      : '<span class="pill ok-status">PAID</span>';
+    html += '<div class="product-row debt-row" data-key="' + escapeHtml(p.key) + '">' +
+      '<div class="product-main"><div class="product-name">' + escapeHtml(p.name) + "</div>" +
+      '<div class="product-code">Last: ' + escapeHtml(lastEntry.date) + "</div></div>" +
+      status + "</div>";
+  });
+
+  if (shown.length === 0) {
+    html = '<p class="empty">' + (people.length === 0 ? "No utang yet." : "No one matches that name.") + "</p>";
+  }
+  byId("debt-list").innerHTML = html;
+}
+
+// ----- the detail sheet for one person -----
+let currentDebtKey = null;
+
+function openDebt(key) {
+  currentDebtKey = key;
+  byId("debt-pay-amount").value = "";
+  byId("debt-pay-message").textContent = "";
+  renderDebtDetail();
+  byId("debt-overlay").hidden = false;
+}
+
+function closeDebt() {
+  currentDebtKey = null;
+  byId("debt-overlay").hidden = true;
+}
+
+function findDebtPerson() {
+  return debtBook().find(function (p) { return p.key === currentDebtKey; });
+}
+
+function renderDebtDetail() {
+  const person = findDebtPerson();
+  if (!person) {
+    closeDebt();
+    return;
+  }
+  byId("debt-name").textContent = person.name;
+  byId("debt-balance").textContent = peso(Math.max(person.balance, 0));
+  byId("debt-pay-form").hidden = person.balance <= 0;
+
+  let html = "";
+  person.entries.slice().reverse().forEach(function (entry) {
+    const when = escapeHtml(entry.date + " " + entry.time);
+    if (entry.type === "charge") {
+      let lines = "";
+      (entry.items || []).forEach(function (item) {
+        lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span>" +
+          '<span class="line-amount">' + peso(item.price * item.qty) + "</span></li>";
+      });
+      html += '<div class="txn"><div class="txn-head"><span class="txn-time">' + when + "</span>" +
+        '<span class="txn-total">+' + peso(entry.amount) + "</span></div>" +
+        '<ul class="txn-items">' + lines + "</ul>" +
+        '<div class="txn-pay">Taken by: ' + (entry.takenBy ? escapeHtml(entry.takenBy) : "not noted") + "</div></div>";
+    } else {
+      html += '<div class="txn"><div class="txn-head"><span class="txn-time">' + when +
+        '<span class="tag dark">PAYMENT</span></span>' +
+        '<span class="txn-total">&minus;' + peso(entry.amount) + "</span></div></div>";
+    }
+  });
+  byId("debt-entries").innerHTML = html;
+}
+
+byId("debt-list").addEventListener("click", function (event) {
+  const row = event.target.closest(".debt-row");
+  if (row) {
+    openDebt(row.getAttribute("data-key"));
+  }
+});
+byId("debt-search").addEventListener("input", renderUtang);
+byId("debt-close").addEventListener("click", closeDebt);
+
+byId("debt-pay-full").addEventListener("click", function () {
+  const person = findDebtPerson();
+  if (person && person.balance > 0) {
+    byId("debt-pay-amount").value = person.balance;
+  }
+});
+
+byId("debt-pay-form").addEventListener("submit", function (event) {
+  event.preventDefault();
+  const person = findDebtPerson();
+  const message = byId("debt-pay-message");
+  if (!person) {
+    return;
+  }
+  const amount = parseFloat(byId("debt-pay-amount").value);
+  if (!(amount > 0)) {
+    message.textContent = "Type the amount that was paid.";
+    return;
+  }
+  if (amount > person.balance + 0.001) {
+    message.textContent = "That is more than the balance (" + peso(person.balance) + ").";
+    return;
+  }
+
+  ledger.push({
+    ts: Date.now(),
+    date: todayText(),
+    time: new Date().toLocaleTimeString(),
+    name: person.name,
+    type: "payment",
+    amount: round2(amount)
+  });
+  saveData();
+  renderAll();
+  byId("debt-pay-amount").value = "";
+  message.textContent = "Payment recorded.";
+  renderDebtDetail();
+});
+
+// ----- charging the current sale to utang -----
+function openUtangCharge() {
+  if (cart.length === 0) {
+    return;
+  }
+  closePay();
+  byId("utang-total").textContent = peso(cartTotal());
+  byId("utang-name").value = "";
+  byId("utang-by").value = "";
+  byId("utang-balance-hint").textContent = "";
+  byId("utang-overlay").hidden = false;
+}
+
+function closeUtangCharge() {
+  byId("utang-overlay").hidden = true;
+}
+
+// show what this person already owes while the name is being typed
+byId("utang-name").addEventListener("input", function () {
+  const key = debtKey(this.value);
+  const person = key === "" ? null : debtBook().find(function (p) { return p.key === key; });
+  byId("utang-balance-hint").textContent = person
+    ? "Already owes " + peso(Math.max(person.balance, 0)) + "."
+    : (key === "" ? "" : "New name.");
+});
+
+byId("utang-form").addEventListener("submit", function (event) {
+  event.preventDefault();
+  const name = byId("utang-name").value.trim();
+  if (name === "" || cart.length === 0) {
+    return;
+  }
+  // If this person already exists, keep the same spelling
+  const existing = debtBook().find(function (p) { return p.key === debtKey(name); });
+  chargeSale(NaN, { name: existing ? existing.name : name, takenBy: byId("utang-by").value.trim() });
+  closeUtangCharge();
+});
+
+byId("pay-utang").addEventListener("click", openUtangCharge);
+byId("utang-cancel").addEventListener("click", closeUtangCharge);
+
+
 /* ---------- 12. BACKUP AND RESTORE ----------
    A backup is a text file (.json) holding your products and sales. */
 
 function makeBackup() {
   return {
     app: "sari-sari-pos",
-    version: 1,
+    version: 2,
     savedAt: new Date().toISOString(),
     products: products,
-    sales: sales
+    sales: sales,
+    ewallet: ewallet,
+    ewalletTx: ewalletTx,
+    ledger: ledger
   };
 }
 
@@ -692,6 +1464,16 @@ function checkBackup(data) {
   });
   if (!productsOk) {
     return "Some products in the backup file are damaged.";
+  }
+  // These three only exist in newer backups, so they are optional.
+  if (data.ewalletTx !== undefined && !Array.isArray(data.ewalletTx)) {
+    return "The GCash/Maya records in the backup file are damaged.";
+  }
+  if (data.ledger !== undefined && !Array.isArray(data.ledger)) {
+    return "The utang records in the backup file are damaged.";
+  }
+  if (data.ewallet !== undefined && (typeof data.ewallet !== "object" || data.ewallet === null)) {
+    return "The GCash/Maya settings in the backup file are damaged.";
   }
   return "";
 }
@@ -766,9 +1548,14 @@ function restoreBackup(text) {
 
   products = data.products;
   sales = data.sales;
+  // An older backup has no GCash/Maya or utang data: keep what is on this page instead of wiping it.
+  if (data.ewallet !== undefined) { ewallet = data.ewallet; normalizeEwallet(); }
+  if (data.ewalletTx !== undefined) { ewalletTx = data.ewalletTx; }
+  if (data.ledger !== undefined) { ledger = data.ledger; }
   cart = [];
   saveData();
   renderAll();
+  fillWalletSettings();
   showMessage("Backup restored.", "ok");
 }
 
@@ -791,7 +1578,7 @@ document.getElementById("restore-file").addEventListener("change", function () {
 
 // Reset everything back to the sample data (asks first)
 document.getElementById("reset-btn").addEventListener("click", function () {
-  if (confirm("Delete all your products and sales and go back to the sample data?")) {
+  if (confirm("Delete all your products and sales and go back to the sample data?\n\nGCash/Maya and utang records are kept.")) {
     products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));   // a fresh copy of the samples
     sales = [];
     cart = [];
