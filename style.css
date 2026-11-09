@@ -1,0 +1,329 @@
+/* =====================================================
+   My Sari-Sari POS - style.css (phone-first)
+   Neutral palette: change these values to restyle the whole page.
+   ===================================================== */
+
+:root {
+  --bg: #f4f2ee;          /* page background (warm off-white) */
+  --card: #ffffff;        /* panels */
+  --border: #e3e0d9;      /* thin lines */
+  --text: #1f1f1d;        /* main text */
+  --muted: #6e6c66;       /* small / secondary text */
+  --dark: #2b2a28;        /* header, main buttons */
+  --soft: #ebe8e1;        /* light gray fills */
+  --radius: 12px;
+  --tabs-h: 58px;         /* height of the bottom tab bar */
+  --bar-h: 76px;          /* height of the total / Charge bar */
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.4;
+}
+
+/* ---------- Header ---------- */
+header {
+  background: var(--dark);
+  color: #f4f2ee;
+  padding: 14px 18px;
+  padding-top: calc(14px + env(safe-area-inset-top));
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
+.today { font-size: 13px; color: #cfccc4; }
+.today strong { font-size: 17px; color: #fff; font-variant-numeric: tabular-nums; }
+
+/* ---------- Layout ---------- */
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+  /* leave room for the fixed bars at the bottom */
+  padding-bottom: calc(var(--tabs-h) + var(--bar-h) + 28px + env(safe-area-inset-bottom));
+}
+
+h2 {
+  margin: 22px 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--muted);
+}
+.view > h2:first-child { margin-top: 4px; }
+
+/* ---------- Inputs (16px stops iPhone zooming in when you tap them) ---------- */
+label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 12px 0 5px;
+}
+input {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid #d3d0c8;
+  border-radius: 10px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input::placeholder { color: #a8a59d; }
+input:focus {
+  outline: none;
+  border-color: var(--dark);
+  box-shadow: 0 0 0 3px rgba(43, 42, 40, 0.12);
+}
+input[type="search"] { margin-bottom: 10px; }
+
+/* ---------- Buttons ---------- */
+button {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary { background: var(--dark); color: #fff; }
+button.secondary { background: #fff; color: var(--text); border-color: #cfccc4; }
+button:active:not(:disabled) { opacity: 0.8; }
+button.wide { width: 100%; margin-top: 16px; }
+
+.button-row { display: flex; gap: 10px; margin-top: 14px; }
+.button-row button { flex: 1; }
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  text-decoration: underline;
+  font-size: 14px;
+  font-weight: 400;
+  min-height: 40px;
+  padding: 0;
+  margin-top: 22px;
+}
+
+.hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+.install-hint {
+  background: var(--soft);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 14px;
+}
+
+/* ---------- Scan row ---------- */
+.scan-row { display: flex; gap: 8px; }
+.scan-row input { flex: 1; min-width: 0; font-size: 18px; letter-spacing: 0.5px; }
+.scan-row button { flex: none; }
+
+.message {
+  min-height: 24px;
+  margin: 10px 2px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.message.error {
+  background: var(--soft);
+  border-left: 4px solid var(--dark);
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+/* ---------- Tap-to-add tiles ---------- */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 560px) {
+  .tile-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 92px;
+  padding: 12px;
+  text-align: left;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.tile-name { font-size: 15px; font-weight: 600; line-height: 1.25; padding-right: 22px; }
+.tile-price { margin-top: auto; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile-stock { font-size: 12px; font-weight: 400; color: var(--muted); }
+.tile-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 12px;
+  background: var(--dark);
+  color: #fff;
+  font-size: 13px;
+  line-height: 24px;
+  text-align: center;
+}
+
+/* ---------- Cart ---------- */
+.cart-list { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+.cart-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.cart-list li:last-child { border-bottom: none; }
+.cart-info { flex: 1; min-width: 0; }
+.cart-name { font-size: 15px; font-weight: 600; }
+.cart-sub { font-size: 12px; color: var(--muted); }
+.stepper { display: flex; align-items: center; gap: 4px; }
+.step { min-height: 40px; width: 40px; padding: 0; font-size: 20px; background: var(--soft); color: var(--text); }
+.qty { min-width: 26px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cart-line-total { min-width: 64px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.empty { color: var(--muted); text-align: center; padding: 22px 10px; font-size: 14px; grid-column: 1 / -1; }
+
+/* ---------- Product list ---------- */
+.product-list { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+.product-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.product-row:last-child { border-bottom: none; }
+.product-main { flex: 1; min-width: 0; }
+.product-name { font-size: 15px; font-weight: 600; }
+.product-code { font-size: 12px; color: var(--muted); }
+.product-nums { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.product-stock { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+.pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+.restock { background: var(--dark); color: #fff; }
+.ok-status { background: var(--soft); color: var(--muted); }
+
+/* ---------- Add-product form ---------- */
+.add-form { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 14px 16px; }
+.inline { display: flex; gap: 8px; }
+.inline input { flex: 1; min-width: 0; }
+.three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+/* ---------- Fixed bars at the bottom ---------- */
+.checkout-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom));
+  height: var(--bar-h);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: #fff;
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+}
+.bar-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.bar-total { font-size: 28px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+#charge-btn { min-width: 150px; min-height: 52px; font-size: 18px; }
+
+.tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  background: var(--dark);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1;
+  height: var(--tabs-h);
+  border-radius: 0;
+  background: none;
+  color: #a9a69e;
+  font-size: 15px;
+}
+.tab.active { color: #fff; box-shadow: inset 0 3px 0 #f4f2ee; }
+
+/* ---------- Sheets and overlays ---------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(20, 20, 18, 0.55);
+}
+.overlay.dark { background: rgba(20, 20, 18, 0.92); align-items: center; }
+
+.sheet {
+  width: 100%;
+  max-width: 480px;
+  background: var(--card);
+  border-radius: 16px 16px 0 0;
+  padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+}
+.sheet h2 { margin-top: 0; }
+.sheet-total { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.sheet-total strong { font-size: 34px; color: var(--text); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.quick-cash { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.quick-cash button {
+  flex: 1 0 28%;
+  min-height: 42px;
+  padding: 0 8px;
+  font-size: 15px;
+  background: var(--soft);
+  color: var(--text);
+}
+.change-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 2px solid var(--dark);
+  color: var(--muted);
+}
+.change-row strong { font-size: 26px; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ---------- Camera scanner ---------- */
+.scanner-box { width: 100%; max-width: 480px; padding: 16px; }
+#reader { width: 100%; background: #000; border-radius: 12px; overflow: hidden; min-height: 120px; }
+.scanner-status { color: #f4f2ee; text-align: center; font-size: 15px; font-weight: 600; margin: 14px 4px 0; min-height: 44px; }
+.scanner-box .primary { background: #f4f2ee; color: var(--dark); }

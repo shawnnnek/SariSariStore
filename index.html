@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>My Sari-Sari POS</title>
+
+  <!-- These lines let the page be added to the iPhone Home Screen like a real app -->
+  <meta name="theme-color" content="#2b2a28">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Sari POS">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" href="icon-192.png">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <h1>My Sari-Sari POS</h1>
+    <div class="today">
+      Today <strong id="today-total">₱0.00</strong>
+      &middot; <span id="today-count">0</span> sales
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ============ SELL TAB ============ -->
+    <section id="view-sell" class="view">
+
+      <!-- Type a barcode, or tap Scan to use the camera -->
+      <form id="scan-form" class="scan-row">
+        <input type="text" id="barcode-input" inputmode="numeric" autocomplete="off"
+               placeholder="Barcode number" aria-label="Barcode">
+        <button type="submit" class="secondary">Add</button>
+        <button type="button" id="camera-btn" class="primary">Scan</button>
+      </form>
+      <p id="message" class="message" role="status"></p>
+
+      <h2>Tap to add</h2>
+      <input type="search" id="search-input" placeholder="Search products" aria-label="Search products">
+      <div id="tile-grid" class="tile-grid"></div>
+
+      <h2>Current sale</h2>
+      <ul id="cart-list" class="cart-list"></ul>
+    </section>
+
+    <!-- ============ PRODUCTS TAB ============ -->
+    <section id="view-products" class="view" hidden>
+
+      <h2>Products &amp; stock</h2>
+      <div id="product-list" class="product-list"></div>
+
+      <h2>Add a product</h2>
+      <form id="add-form" class="add-form">
+        <label for="new-barcode">Barcode</label>
+        <div class="inline">
+          <input type="text" id="new-barcode" inputmode="numeric" autocomplete="off" required>
+          <button type="button" id="fill-camera-btn" class="secondary">Scan</button>
+        </div>
+
+        <label for="new-name">Product name</label>
+        <input type="text" id="new-name" required>
+
+        <div class="three">
+          <div>
+            <label for="new-price">Price (₱)</label>
+            <input type="number" id="new-price" inputmode="decimal" min="0" step="0.01" required>
+          </div>
+          <div>
+            <label for="new-stock">Stock</label>
+            <input type="number" id="new-stock" inputmode="numeric" min="0" step="1" required>
+          </div>
+          <div>
+            <label for="new-reorder">Restock at</label>
+            <input type="number" id="new-reorder" inputmode="numeric" min="0" step="1" placeholder="5">
+          </div>
+        </div>
+
+        <button type="submit" class="primary wide">Add product</button>
+        <p id="form-message" class="hint"></p>
+      </form>
+
+      <h2>Backup</h2>
+      <p class="hint">Your data lives on this device only. Save a backup file regularly, and keep a copy somewhere safe (Files, Google Drive, a flash drive).</p>
+      <div class="button-row">
+        <button id="backup-btn" class="secondary">Save backup</button>
+        <button id="restore-btn" class="secondary">Restore backup</button>
+      </div>
+      <p id="backup-status" class="hint"></p>
+      <input type="file" id="restore-file" hidden>
+
+      <p id="install-hint" class="hint install-hint" hidden>
+        <strong>On iPhone:</strong> open this page in Safari, tap the Share button, then
+        <strong>Add to Home Screen</strong>. Use it from that icon every time, so your data stays in one place.
+      </p>
+
+      <button id="reset-btn" class="link-btn">Reset demo data</button>
+    </section>
+
+  </main>
+
+  <!-- Bar showing the total and the Charge button -->
+  <div id="checkout-bar" class="checkout-bar">
+    <div>
+      <div class="bar-label"><span id="item-count">0</span> items</div>
+      <div id="cart-total" class="bar-total">₱0.00</div>
+    </div>
+    <button id="charge-btn" class="primary">Charge</button>
+  </div>
+
+  <!-- Bottom tabs -->
+  <nav class="tabs">
+    <button id="tab-sell" class="tab active" data-view="sell">Sell</button>
+    <button id="tab-products" class="tab" data-view="products">Products</button>
+  </nav>
+
+  <!-- ============ PAYMENT SHEET ============ -->
+  <div id="pay-overlay" class="overlay" hidden>
+    <div class="sheet">
+      <h2>Charge</h2>
+      <div class="sheet-total">Total <strong id="pay-total">₱0.00</strong></div>
+
+      <label for="cash-input">Cash received</label>
+      <input type="number" id="cash-input" inputmode="decimal" min="0" step="0.01" placeholder="0.00">
+      <div id="quick-cash" class="quick-cash"></div>
+
+      <div class="change-row"><span id="change-label">Change</span><strong id="change">₱0.00</strong></div>
+
+      <div class="button-row">
+        <button id="pay-cancel" class="secondary">Cancel</button>
+        <button id="pay-confirm" class="primary">Complete sale</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CAMERA SCANNER ============ -->
+  <div id="scanner-overlay" class="overlay dark" hidden>
+    <div class="scanner-box">
+      <div id="reader"></div>
+      <p id="scanner-status" class="scanner-status"></p>
+      <button id="scanner-close" class="primary wide">Done</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
