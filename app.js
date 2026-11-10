@@ -77,7 +77,7 @@ function normalizeProductFields() {
             p.cost = 0;
         }
         if (typeof p.featured !== "boolean") {
-            p.featured = true; // Default older products to show on front page
+            p.featured = false; // Default unspecified products to false so they stay in background unless toggled
         }
     });
 }
@@ -311,7 +311,7 @@ function chargeSale(cash, utang) {
 /* ---------- 6. DRAWING THE SCREEN ----------
    "render" functions rebuild part of the page from the current data. */
 
-// The tap-to-add grid. Only shows featured items unless searching. Limits to top 10 or matching items.
+// The tap-to-add grid. Only shows featured items unless searching. Limits strictly to top 9 products.
 function renderTiles() {
     const query = document.getElementById("search-input").value.trim().toLowerCase();
     const sold = soldCounts();
@@ -329,9 +329,9 @@ function renderTiles() {
         return (sold[b.barcode] || 0) - (sold[a.barcode] || 0) || a.name.localeCompare(b.name);
     });
 
-    // If not searching, limit default view to top 10 featured items to prevent UI flooding
-    if (query === "" && list.length > 10) {
-        list = list.slice(0, 10);
+    // If not searching, limit default view strictly to top 9 featured items
+    if (query === "" && list.length > 9) {
+        list = list.slice(0, 9);
     }
 
     let html = "";
@@ -487,8 +487,6 @@ function todayStats() {
         } else if (event.kind === "payment") {
             stats.count++;
             stats.total += d.amount;
-            // Note: Profit from utang sales is counted when the items are originally sold, or can be tracked when paid. 
-            // To prevent double counting, utang payments add to cash total but profit is already registered on sale.
         }
     });
 
@@ -936,7 +934,7 @@ function openEdit(barcode) {
     document.getElementById("edit-cost").value = product.cost !== undefined ? product.cost : 0;
     document.getElementById("edit-stock").value = product.stock;
     document.getElementById("edit-reorder").value = product.reorder;
-    document.getElementById("edit-featured").checked = product.featured !== false;
+    document.getElementById("edit-featured").checked = product.featured === true;
     document.getElementById("edit-message").textContent = "";
     document.getElementById("edit-overlay").hidden = false;
 }
@@ -1650,7 +1648,7 @@ byId("wallet-quick").addEventListener("click", function (event) {
 function makeBackup() {
     return {
         app: "sari-sari-pos",
-        version: 3, // bumped version for cost/profit update
+        version: 3,
         savedAt: new Date().toISOString(),
         products: products,
         sales: sales,
