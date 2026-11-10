@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>My Sari-Sari POS</title>
+
+  <!-- These lines let the page be added to the iPhone Home Screen like a real app -->
+  <meta name="theme-color" content="#2b2a28">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Sari POS">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" href="icon-192.png">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <h1>🏪 My Sari-Sari POS</h1>
+    <div class="today">
+      Today <strong id="today-total">₱0.00</strong>
+      &middot; <span id="today-count">0</span> transactions
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ============ SELL TAB ============ -->
+    <section id="view-sell" class="view">
+
+      <!-- Type a barcode, or tap Scan to use the camera -->
+      <form id="scan-form" class="scan-row">
+        <input type="text" id="barcode-input" inputmode="numeric" autocomplete="off"
+               placeholder="Barcode" aria-label="Barcode">
+        <button type="submit" class="secondary">Add</button>
+        <button type="button" id="camera-btn" class="primary">📷 Scan</button>
+      </form>
+      <p id="message" class="message" role="status"></p>
+
+      <h2>GCash &amp; Maya</h2>
+      <div class="wallet-row">
+        <button type="button" class="wallet-tile gcash" data-wallet="gcash">
+          <span class="wallet-name">📱 GCash</span>
+          <span class="wallet-bal" id="bal-gcash">₱0.00</span>
+          <span class="wallet-sub">Tap for cash in / out</span>
+        </button>
+        <button type="button" class="wallet-tile maya" data-wallet="maya">
+          <span class="wallet-name">📱 Maya</span>
+          <span class="wallet-bal" id="bal-maya">₱0.00</span>
+          <span class="wallet-sub">Tap for cash in / out</span>
+        </button>
+      </div>
+
+      <h2>Tap a product to add it</h2>
+      <input type="search" id="search-input" placeholder="Search products" aria-label="Search products">
+      <div id="tile-grid" class="tile-grid"></div>
+
+      <h2>Current sale</h2>
+      <ul id="cart-list" class="cart-list"></ul>
+    </section>
+
+    <!-- ============ TODAY TAB ============ -->
+    <section id="view-today" class="view" hidden>
+      <h2>Today's sales</h2>
+
+      <div class="stat-row">
+        <div class="stat"><div class="stat-label">Total</div><div id="stat-total" class="stat-value">₱0.00</div></div>
+        <div class="stat"><div class="stat-label">Count</div><div id="stat-count" class="stat-value">0</div></div>
+        <div class="stat"><div class="stat-label">Items</div><div id="stat-items" class="stat-value">0</div></div>
+      </div>
+      <div class="stat-row small">
+        <div class="stat"><div class="stat-label">Fees</div><div id="stat-fees" class="stat-value">₱0.00</div></div>
+        <div class="stat"><div class="stat-label">Cash in</div><div id="stat-cashin" class="stat-value">₱0.00</div></div>
+        <div class="stat"><div class="stat-label">Cash out</div><div id="stat-cashout" class="stat-value">₱0.00</div></div>
+      </div>
+      <p id="stat-hint" class="hint"></p>
+
+      <h2>Transactions</h2>
+      <div id="today-list" class="today-list"></div>
+    </section>
+
+    <!-- ============ UTANG TAB ============ -->
+    <section id="view-utang" class="view theme-utang" hidden>
+      <h2>Utang</h2>
+      <div class="stat-row two">
+        <div class="stat"><div class="stat-label">Total owed</div><div id="debt-total" class="stat-value">₱0.00</div></div>
+        <div class="stat"><div class="stat-label">Owing</div><div id="debt-people" class="stat-value">0 people</div></div>
+      </div>
+
+      <h2>People</h2>
+      <input type="search" id="debt-search" placeholder="Search names" aria-label="Search names">
+      <div id="debt-list" class="product-list"></div>
+      <p class="hint">To add utang, scan or tap the items on the Sell tab, tap Charge, then <strong>Put on utang instead</strong>.</p>
+    </section>
+
+    <!-- ============ PRODUCTS TAB ============ -->
+    <section id="view-products" class="view" hidden>
+
+      <h2>Products &amp; stock</h2>
+      <p class="hint tap-hint">Tap a product to edit or delete it.</p>
+      <div id="product-list" class="product-list"></div>
+
+      <h2>Add a product</h2>
+      <form id="add-form" class="add-form">
+        <label for="new-barcode">Barcode</label>
+        <div class="inline">
+          <input type="text" id="new-barcode" inputmode="numeric" autocomplete="off" required>
+          <button type="button" id="fill-camera-btn" class="secondary">Scan</button>
+        </div>
+
+        <label for="new-name">Product name</label>
+        <input type="text" id="new-name" required>
+
+        <div class="three">
+          <div>
+            <label for="new-price">Price (₱)</label>
+            <input type="number" id="new-price" inputmode="decimal" min="0" step="0.01" required>
+          </div>
+          <div>
+            <label for="new-stock">Stock</label>
+            <input type="number" id="new-stock" inputmode="numeric" min="0" step="1" required>
+          </div>
+          <div>
+            <label for="new-reorder">Restock at</label>
+            <input type="number" id="new-reorder" inputmode="numeric" min="0" step="1" placeholder="5">
+          </div>
+        </div>
+
+        <label>Picture (tap one, or leave it and it picks for you)</label>
+        <div id="new-icons" class="icon-picker"></div>
+
+        <button type="submit" class="primary wide">➕ Add product</button>
+        <p id="form-message" class="hint"></p>
+      </form>
+
+      <h2>GCash &amp; Maya settings</h2>
+      <div class="add-form">
+        <label for="set-gcash-numbers">GCash number(s)</label>
+        <input type="text" id="set-gcash-numbers" inputmode="tel" autocomplete="off" placeholder="Separate several numbers with commas">
+        <label for="set-gcash-balance">GCash balance now (₱)</label>
+        <input type="number" id="set-gcash-balance" inputmode="decimal" min="0" step="0.01">
+
+        <label for="set-maya-numbers">Maya number(s)</label>
+        <input type="text" id="set-maya-numbers" inputmode="tel" autocomplete="off" placeholder="Separate several numbers with commas">
+        <label for="set-maya-balance">Maya balance now (₱)</label>
+        <input type="number" id="set-maya-balance" inputmode="decimal" min="0" step="0.01">
+
+        <label for="set-cashout-mode">When a customer cashes out</label>
+        <select id="set-cashout-mode">
+          <option value="deduct">Take the fee out of the cash</option>
+          <option value="extra">Customer sends the fee on top</option>
+        </select>
+
+        <button type="button" id="save-wallet-settings" class="primary wide">Save settings</button>
+        <p id="wallet-settings-msg" class="hint"></p>
+        <p class="hint"><strong>Take the fee out of the cash:</strong> on a ₱1,000 cash out with a ₱15 fee, you hand over ₱985 and your wallet goes up ₱1,000. <strong>Customer sends the fee on top:</strong> you hand over ₱1,000 and your wallet goes up ₱1,015.</p>
+        <p class="hint">Cash in and cash out change the balance by themselves. When you load your wallet or withdraw to a bank, type the new balance here. Your numbers stay on this device and in your backup file, not on GitHub.</p>
+      </div>
+
+      <h2>Backup</h2>
+      <p class="hint">Your data lives on this device only. Save a backup file regularly, and keep a copy somewhere safe (Files, Google Drive, a flash drive).</p>
+      <div class="button-row">
+        <button id="backup-btn" class="secondary">💾 Save backup</button>
+        <button id="restore-btn" class="secondary">Restore backup</button>
+      </div>
+      <p id="backup-status" class="hint"></p>
+      <input type="file" id="restore-file" hidden>
+
+      <p id="install-hint" class="hint install-hint" hidden>
+        <strong>On iPhone:</strong> open this page in Safari, tap the Share button, then
+        <strong>Add to Home Screen</strong>. Use it from that icon every time, so your data stays in one place.
+      </p>
+
+      <div class="danger-links">
+        <button id="empty-btn" class="link-btn">Start with an empty list</button>
+        <button id="reset-btn" class="link-btn">Reset to sample data</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Bar showing the total and the Charge button -->
+  <div id="checkout-bar" class="checkout-bar">
+    <div>
+      <div class="bar-label"><span id="item-count">0</span> items</div>
+      <div id="cart-total" class="bar-total">₱0.00</div>
+    </div>
+    <button id="charge-btn" class="primary">💰 Charge</button>
+  </div>
+
+  <!-- Bottom tabs -->
+  <nav class="tabs">
+    <button id="tab-sell" class="tab active" data-view="sell"><span class="tab-icon">🛒</span><span>Sell</span></button>
+    <button id="tab-today" class="tab" data-view="today"><span class="tab-icon">📋</span><span>Today</span></button>
+    <button id="tab-utang" class="tab" data-view="utang"><span class="tab-icon">📒</span><span>Utang</span></button>
+    <button id="tab-products" class="tab" data-view="products"><span class="tab-icon">📦</span><span>Products</span></button>
+  </nav>
+
+  <!-- ============ PAYMENT SHEET ============ -->
+  <div id="pay-overlay" class="overlay" hidden>
+    <div class="sheet">
+      <h2>Charge</h2>
+      <div class="sheet-total">Total <strong id="pay-total">₱0.00</strong></div>
+
+      <label for="cash-input">Cash received</label>
+      <input type="number" id="cash-input" inputmode="decimal" min="0" step="0.01" placeholder="0.00">
+      <div id="quick-cash" class="quick-cash"></div>
+
+      <div class="change-row"><span id="change-label">Change</span><strong id="change">₱0.00</strong></div>
+
+      <div class="button-row">
+        <button id="pay-cancel" class="secondary">❌ Cancel</button>
+        <button id="pay-confirm" class="primary">✅ Complete sale</button>
+      </div>
+      <button type="button" id="pay-utang" class="utang-btn">📒 Put on utang instead</button>
+    </div>
+  </div>
+
+  <!-- ============ GCASH / MAYA SHEET ============ -->
+  <div id="wallet-overlay" class="overlay" hidden>
+    <form id="wallet-form" class="sheet">
+      <h2 id="wallet-title">GCash</h2>
+      <p id="wallet-numbers" class="hint"></p>
+      <div class="sheet-total">Balance <strong id="wallet-balance">₱0.00</strong></div>
+
+      <div class="seg" role="group" aria-label="Cash in or cash out">
+        <button type="button" id="mode-in" class="active"><span class="flow">💵 ➜ 📱</span><span>Cash in</span></button>
+        <button type="button" id="mode-out"><span class="flow">📱 ➜ 💵</span><span>Cash out</span></button>
+      </div>
+      <p id="mode-hint" class="hint"></p>
+
+      <label for="wallet-amount">Amount (₱)</label>
+      <input type="number" id="wallet-amount" inputmode="decimal" min="1" step="0.01" placeholder="0">
+
+      <div id="wallet-quick" class="quick-cash"></div>
+
+      <label for="wallet-fee">Fee (₱): filled in automatically, you can change it</label>
+      <input type="number" id="wallet-fee" inputmode="decimal" min="0" step="0.01" placeholder="0">
+
+      <div class="wallet-summary">
+        <div class="sum-row"><span id="sum-cash-label">Cash</span><strong id="sum-cash">-</strong></div>
+        <div class="sum-row"><span>Wallet change</span><strong id="sum-change">-</strong></div>
+        <div class="sum-row"><span>Wallet after</span><strong id="sum-wallet">-</strong></div>
+      </div>
+      <p id="wallet-error" class="hint error-text"></p>
+
+      <div class="button-row">
+        <button type="button" id="wallet-cancel" class="secondary">❌ Cancel</button>
+        <button type="submit" id="wallet-confirm" class="primary" disabled>✅ Complete</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ============ CHARGE TO UTANG SHEET ============ -->
+  <div id="utang-overlay" class="overlay" hidden>
+    <form id="utang-form" class="sheet theme-utang">
+      <h2>Charge to utang</h2>
+      <div class="sheet-total">Total <strong id="utang-total">₱0.00</strong></div>
+
+      <label for="utang-name">Name (who owes)</label>
+      <input type="text" id="utang-name" list="utang-names" autocomplete="off" required>
+      <datalist id="utang-names"></datalist>
+      <p id="utang-balance-hint" class="hint"></p>
+
+      <label for="utang-by">Taken by (optional)</label>
+      <input type="text" id="utang-by" autocomplete="off" placeholder="If someone else picked up the items">
+
+      <div class="button-row">
+        <button type="button" id="utang-cancel" class="secondary">❌ Cancel</button>
+        <button type="submit" class="primary">📒 Charge to utang</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ============ UTANG DETAIL SHEET ============ -->
+  <div id="debt-overlay" class="overlay" hidden>
+    <div class="sheet theme-utang">
+      <h2 id="debt-name">Name</h2>
+      <div class="sheet-total">Owes <strong id="debt-balance">₱0.00</strong></div>
+
+      <form id="debt-pay-form">
+        <label for="debt-pay-amount">Payment received (₱)</label>
+        <div class="inline">
+          <input type="number" id="debt-pay-amount" inputmode="decimal" min="0" step="0.01" placeholder="0">
+          <button type="button" id="debt-pay-full" class="secondary">Full</button>
+        </div>
+        <button type="submit" class="primary wide">💵 Record payment</button>
+        <p id="debt-pay-message" class="hint error-text"></p>
+      </form>
+
+      <h2>History</h2>
+      <div id="debt-entries" class="today-list"></div>
+
+      <button type="button" id="debt-close" class="secondary wide">✖ Close</button>
+    </div>
+  </div>
+
+  <!-- ============ EDIT PRODUCT SHEET ============ -->
+  <div id="edit-overlay" class="overlay" hidden>
+    <form id="edit-form" class="sheet">
+      <h2>Edit product</h2>
+
+      <label for="edit-name">Product name</label>
+      <input type="text" id="edit-name" required>
+
+      <label>Picture (tap one)</label>
+      <div id="edit-icons" class="icon-picker"></div>
+
+      <label for="edit-barcode">Barcode</label>
+      <div class="inline">
+        <input type="text" id="edit-barcode" inputmode="numeric" autocomplete="off" required>
+        <button type="button" id="edit-scan-btn" class="secondary">Scan</button>
+      </div>
+
+      <div class="three">
+        <div>
+          <label for="edit-price">Price (₱)</label>
+          <input type="number" id="edit-price" inputmode="decimal" min="0" step="0.01" required>
+        </div>
+        <div>
+          <label for="edit-stock">Stock</label>
+          <input type="number" id="edit-stock" inputmode="numeric" min="0" step="1" required>
+        </div>
+        <div>
+          <label for="edit-reorder">Restock at</label>
+          <input type="number" id="edit-reorder" inputmode="numeric" min="0" step="1" required>
+        </div>
+      </div>
+      <p class="hint">Received new stock? Type the new total you have now in the Stock box.</p>
+      <p id="edit-message" class="hint error-text"></p>
+
+      <div class="button-row">
+        <button type="button" id="edit-cancel" class="secondary">❌ Cancel</button>
+        <button type="submit" class="primary">✅ Save</button>
+      </div>
+      <button type="button" id="edit-delete" class="link-btn">🗑 Delete this product</button>
+    </form>
+  </div>
+
+  <!-- ============ CAMERA SCANNER ============ -->
+  <div id="scanner-overlay" class="overlay dark" hidden>
+    <div class="scanner-box">
+      <div id="reader"></div>
+      <p id="scanner-status" class="scanner-status"></p>
+      <button id="scanner-close" class="primary wide">Done</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
