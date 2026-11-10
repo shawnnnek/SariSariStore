@@ -304,10 +304,11 @@ function renderTiles() {
     const soldOut = p.stock - qty <= 0;
     const stockText = p.stock <= 0 ? "Out of stock" : (p.stock - qty) + " left";
 
-    html += '<button class="tile" data-barcode="' + escapeHtml(p.barcode) + '"' + (soldOut ? " disabled" : "") + ">" +
+    const low = p.stock - qty <= p.reorder;            // running low: shown in red
+    html += '<button class="tile' + (qty > 0 ? " in-cart" : "") + '" data-barcode="' + escapeHtml(p.barcode) + '"' + (soldOut ? " disabled" : "") + ">" +
       '<span class="tile-name">' + escapeHtml(p.name) + "</span>" +
       '<span class="tile-price">' + peso(p.price) + "</span>" +
-      '<span class="tile-stock">' + stockText + "</span>" +
+      '<span class="tile-stock' + (low ? " low" : "") + '">' + stockText + "</span>" +
       (qty > 0 ? '<span class="tile-badge">' + qty + "</span>" : "") +
       "</button>";
   });
@@ -473,9 +474,9 @@ function renderToday() {
       });
 
       let pay = "";
-      let tag = "";
+      let tag = '<span class="tag sale">SALE</span>';
       if (d.utang) {
-        tag = '<span class="tag dark">UTANG &middot; ' + escapeHtml(d.utang.name) + "</span>";
+        tag = '<span class="tag utang">UTANG &middot; ' + escapeHtml(d.utang.name) + "</span>";
         pay = '<div class="txn-pay">Charged to utang' +
           (d.utang.takenBy ? " &middot; taken by " + escapeHtml(d.utang.takenBy) : "") + "</div>";
       } else if (typeof d.cash === "number") {
@@ -483,7 +484,7 @@ function renderToday() {
         pay = '<div class="txn-pay">Cash ' + peso(d.cash) + " &middot; Change " + peso(d.change) + "</div>";
       }
 
-      html += '<div class="txn">' +
+      html += '<div class="txn ' + (d.utang ? "k-utang" : "k-sale") + '">' +
         '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + tag + "</span>" +
         '<span class="txn-total">' + peso(d.total) + "</span></div>" +
         '<ul class="txn-items">' + lines + "</ul>" + pay + "</div>";
@@ -493,19 +494,19 @@ function renderToday() {
       const cashText = d.cashDelta >= 0
         ? "Customer gave " + peso(d.cashDelta)
         : "Gave customer " + peso(-d.cashDelta);
-      html += '<div class="txn">' +
-        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag dark">' + label + "</span></span>" +
+      html += '<div class="txn k-' + d.wallet + '">' +
+        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag ' + d.wallet + '">' + label + "</span></span>" +
         '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
         '<div class="txn-pay">Fee ' + peso(d.fee) + " &middot; " + cashText + "</div></div>";
 
     } else if (event.kind === "payment") {
-      html += '<div class="txn">' +
-        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag dark">UTANG PAYMENT</span></span>' +
+      html += '<div class="txn k-utang">' +
+        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag utang">UTANG PAYMENT</span></span>' +
         '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
         '<div class="txn-pay">From ' + escapeHtml(d.name) + "</div></div>";
 
     } else if (event.kind === "adjust") {
-      html += '<div class="txn muted">' +
+      html += '<div class="txn muted k-' + d.wallet + '">' +
         '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag">' + WALLET_NAMES[d.wallet] + " balance changed</span></span>" +
         '<span class="txn-pay">' + (d.walletDelta >= 0 ? "+" : "&minus;") + peso(Math.abs(d.walletDelta)) + "</span></div>" +
         '<div class="txn-pay">New balance ' + peso(d.balanceAfter) + "</div></div>";
@@ -1033,6 +1034,7 @@ function renderWallets() {
 function openWallet(name) {
   walletInUse = name;
   feeEdited = false;
+  byId("wallet-form").className = "sheet theme-" + name;   // blue for GCash, green for Maya
   byId("wallet-title").textContent = WALLET_NAMES[name];
   const numbers = ewallet[name].numbers.trim();
   byId("wallet-numbers").textContent = numbers

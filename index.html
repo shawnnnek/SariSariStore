@@ -35,27 +35,27 @@
       <!-- Type a barcode, or tap Scan to use the camera -->
       <form id="scan-form" class="scan-row">
         <input type="text" id="barcode-input" inputmode="numeric" autocomplete="off"
-               placeholder="Barcode number" aria-label="Barcode">
+               placeholder="Barcode" aria-label="Barcode">
         <button type="submit" class="secondary">Add</button>
-        <button type="button" id="camera-btn" class="primary">Scan</button>
+        <button type="button" id="camera-btn" class="primary">📷 Scan</button>
       </form>
       <p id="message" class="message" role="status"></p>
 
       <h2>GCash &amp; Maya</h2>
       <div class="wallet-row">
-        <button type="button" class="wallet-tile" data-wallet="gcash">
+        <button type="button" class="wallet-tile gcash" data-wallet="gcash">
           <span class="wallet-name">GCash</span>
           <span class="wallet-bal" id="bal-gcash">₱0.00</span>
           <span class="wallet-sub">Tap for cash in / out</span>
         </button>
-        <button type="button" class="wallet-tile" data-wallet="maya">
+        <button type="button" class="wallet-tile maya" data-wallet="maya">
           <span class="wallet-name">Maya</span>
           <span class="wallet-bal" id="bal-maya">₱0.00</span>
           <span class="wallet-sub">Tap for cash in / out</span>
         </button>
       </div>
 
-      <h2>Tap to add</h2>
+      <h2>Tap a product to add it</h2>
       <input type="search" id="search-input" placeholder="Search products" aria-label="Search products">
       <div id="tile-grid" class="tile-grid"></div>
 
@@ -73,7 +73,7 @@
         <div class="stat"><div class="stat-label">Items</div><div id="stat-items" class="stat-value">0</div></div>
       </div>
       <div class="stat-row small">
-        <div class="stat"><div class="stat-label">Fees earned</div><div id="stat-fees" class="stat-value">₱0.00</div></div>
+        <div class="stat"><div class="stat-label">Fees</div><div id="stat-fees" class="stat-value">₱0.00</div></div>
         <div class="stat"><div class="stat-label">Cash in</div><div id="stat-cashin" class="stat-value">₱0.00</div></div>
         <div class="stat"><div class="stat-label">Cash out</div><div id="stat-cashout" class="stat-value">₱0.00</div></div>
       </div>
@@ -84,7 +84,7 @@
     </section>
 
     <!-- ============ UTANG TAB ============ -->
-    <section id="view-utang" class="view" hidden>
+    <section id="view-utang" class="view theme-utang" hidden>
       <h2>Utang</h2>
       <div class="stat-row two">
         <div class="stat"><div class="stat-label">Total owed</div><div id="debt-total" class="stat-value">₱0.00</div></div>
@@ -191,10 +191,10 @@
 
   <!-- Bottom tabs -->
   <nav class="tabs">
-    <button id="tab-sell" class="tab active" data-view="sell">Sell</button>
-    <button id="tab-today" class="tab" data-view="today">Today</button>
-    <button id="tab-utang" class="tab" data-view="utang">Utang</button>
-    <button id="tab-products" class="tab" data-view="products">Products</button>
+    <button id="tab-sell" class="tab active" data-view="sell"><span class="tab-icon">🛒</span><span>Sell</span></button>
+    <button id="tab-today" class="tab" data-view="today"><span class="tab-icon">📋</span><span>Today</span></button>
+    <button id="tab-utang" class="tab" data-view="utang"><span class="tab-icon">📒</span><span>Utang</span></button>
+    <button id="tab-products" class="tab" data-view="products"><span class="tab-icon">📦</span><span>Products</span></button>
   </nav>
 
   <!-- ============ PAYMENT SHEET ============ -->
@@ -213,7 +213,7 @@
         <button id="pay-cancel" class="secondary">Cancel</button>
         <button id="pay-confirm" class="primary">Complete sale</button>
       </div>
-      <button type="button" id="pay-utang" class="link-btn">Put on utang instead</button>
+      <button type="button" id="pay-utang" class="utang-btn">📒 Put on utang instead</button>
     </div>
   </div>
 
@@ -252,7 +252,7 @@
 
   <!-- ============ CHARGE TO UTANG SHEET ============ -->
   <div id="utang-overlay" class="overlay" hidden>
-    <form id="utang-form" class="sheet">
+    <form id="utang-form" class="sheet theme-utang">
       <h2>Charge to utang</h2>
       <div class="sheet-total">Total <strong id="utang-total">₱0.00</strong></div>
 
@@ -273,7 +273,7 @@
 
   <!-- ============ UTANG DETAIL SHEET ============ -->
   <div id="debt-overlay" class="overlay" hidden>
-    <div class="sheet">
+    <div class="sheet theme-utang">
       <h2 id="debt-name">Name</h2>
       <div class="sheet-total">Owes <strong id="debt-balance">₱0.00</strong></div>
 
