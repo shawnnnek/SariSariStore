@@ -121,7 +121,7 @@ function findProduct(barcode) {
 let messageTimer = null;
 function showMessage(text, type) {
   const box = document.getElementById("message");
-  box.textContent = text;
+  box.textContent = (type === "error" ? "⚠️ " : "✅ ") + text;
   box.className = "message " + type;
   clearTimeout(messageTimer);
   messageTimer = setTimeout(function () {
@@ -305,7 +305,9 @@ function renderTiles() {
     const stockText = p.stock <= 0 ? "Out of stock" : (p.stock - qty) + " left";
 
     const low = p.stock - qty <= p.reorder;            // running low: shown in red
-    html += '<button class="tile' + (qty > 0 ? " in-cart" : "") + '" data-barcode="' + escapeHtml(p.barcode) + '"' + (soldOut ? " disabled" : "") + ">" +
+    const colors = tileColors(p);
+    html += '<button class="tile' + (qty > 0 ? " in-cart" : "") + '" style="--tile-bg:' + colors[0] + ";--tile-border:" + colors[1] + '" data-barcode="' + escapeHtml(p.barcode) + '"' + (soldOut ? " disabled" : "") + ">" +
+      '<span class="tile-icon">' + productIcon(p) + "</span>" +
       '<span class="tile-name">' + escapeHtml(p.name) + "</span>" +
       '<span class="tile-price">' + peso(p.price) + "</span>" +
       '<span class="tile-stock' + (low ? " low" : "") + '">' + stockText + "</span>" +
@@ -323,7 +325,9 @@ function renderCart() {
   let html = "";
 
   cart.forEach(function (item) {
+    const cartProduct = findProduct(item.barcode);
     html += "<li>" +
+      '<span class="cart-icon">' + (cartProduct ? productIcon(cartProduct) : "🛒") + "</span>" +
       '<div class="cart-info"><div class="cart-name">' + escapeHtml(item.name) + "</div>" +
       '<div class="cart-sub">' + peso(item.price) + " each</div></div>" +
       '<div class="stepper">' +
@@ -363,7 +367,9 @@ function renderProducts() {
       ? '<span class="pill restock">RESTOCK</span>'
       : '<span class="pill ok-status">OK</span>';
 
+    const colors = tileColors(p);
     html += '<div class="product-row" data-barcode="' + escapeHtml(p.barcode) + '">' +
+      '<span class="prod-icon" style="background:' + colors[0] + ";border-color:" + colors[1] + '">' + productIcon(p) + "</span>" +
       '<div class="product-main"><div class="product-name">' + escapeHtml(p.name) + "</div>" +
       '<div class="product-code">' + escapeHtml(p.barcode) + "</div></div>" +
       '<div class="product-nums"><div>' + peso(p.price) + "</div>" +
@@ -565,9 +571,10 @@ document.querySelectorAll(".tab").forEach(function (button) {
 const QUICK_CASH = [20, 50, 100, 200, 500, 1000];
 
 function buildQuickCash() {
-  let html = '<button type="button" data-cash="exact">Exact</button>';
+  // each button has the color of the real peso bill, so it can be found by color
+  let html = '<button type="button" class="bill exact" data-cash="exact">✔ Exact</button>';
   QUICK_CASH.forEach(function (amount) {
-    html += '<button type="button" data-cash="' + amount + '">₱' + amount + "</button>";
+    html += '<button type="button" class="bill ' + BILL_CLASS[amount] + '" data-cash="' + amount + '">₱' + amount + "</button>";
   });
   document.getElementById("quick-cash").innerHTML = html;
 }
@@ -836,17 +843,23 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
     reorder = 5;
   }
 
-  products.push({
+  const newProduct = {
     barcode: barcode,
     name: name,
     price: parseFloat(document.getElementById("new-price").value),
     stock: parseInt(document.getElementById("new-stock").value, 10),
     reorder: reorder
-  });
+  };
+  if (newIcon) {
+    newProduct.icon = newIcon;
+  }
+  products.push(newProduct);
 
   saveData();
   renderAll();
   this.reset();
+  newIcon = "";
+  setPickedIcon("new-icons", "");
   message.textContent = "Added: " + name;
 });
 
@@ -862,6 +875,8 @@ function openEdit(barcode) {
     return;
   }
   editingBarcode = product.barcode;
+  editIcon = product.icon || "";
+  setPickedIcon("edit-icons", editIcon);
   document.getElementById("edit-name").value = product.name;
   document.getElementById("edit-barcode").value = product.barcode;
   document.getElementById("edit-price").value = product.price;
@@ -899,6 +914,11 @@ function saveEdit() {
   product.price = parseFloat(document.getElementById("edit-price").value);
   product.stock = parseInt(document.getElementById("edit-stock").value, 10);
   product.reorder = parseInt(document.getElementById("edit-reorder").value, 10);
+  if (editIcon) {
+    product.icon = editIcon;
+  } else {
+    delete product.icon;               // no picture chosen: it is guessed from the name
+  }
 
   // If this product is in the current sale, update that line too.
   const line = cart.find(function (item) { return item.barcode === oldBarcode; });
@@ -1281,6 +1301,7 @@ function renderUtang() {
       ? '<div class="product-nums"><div>' + peso(p.balance) + "</div></div>"
       : '<span class="pill ok-status">PAID</span>';
     html += '<div class="product-row debt-row" data-key="' + escapeHtml(p.key) + '">' +
+      avatarHtml(p.name) +
       '<div class="product-main"><div class="product-name">' + escapeHtml(p.name) + "</div>" +
       '<div class="product-code">Last: ' + escapeHtml(lastEntry.date) + "</div></div>" +
       status + "</div>";
@@ -1432,6 +1453,136 @@ byId("utang-form").addEventListener("submit", function (event) {
 
 byId("pay-utang").addEventListener("click", openUtangCharge);
 byId("utang-cancel").addEventListener("click", closeUtangCharge);
+
+
+/* ---------- 11e. PICTURES AND COLORS ----------
+   Every product has a picture (an emoji) and a color, so people who can't read well
+   can find things by looking. If no picture is chosen, one is guessed from the name. */
+
+const PRODUCT_ICONS = ["🍜", "☕", "🧃", "💧", "🥤", "🧴", "🧼", "🪥", "🧻", "🍞", "🍪", "🍫", "🍬", "🍿", "🥫", "🧂", "🍚", "🥚", "🛢️", "🔋", "🛒"];
+
+// soft background and border color for the product tiles (the same picture always gets the same color)
+const TILE_COLORS = [
+  ["#fff3c4", "#eec746"],   // yellow
+  ["#ffdce8", "#ee8fb0"],   // pink
+  ["#d8eefc", "#6fbbe8"],   // sky blue
+  ["#e8f6c8", "#a6cf4f"],   // lime
+  ["#ffe0cc", "#ee9f6d"],   // peach
+  ["#e6deff", "#a994ec"],   // lilac
+  ["#cff3e6", "#62c9a7"],   // mint
+  ["#f1e6d2", "#cdb47f"]    // sand
+];
+
+// words in a product name -> picture
+const ICON_GUESS = [
+  ["🍜", ["noodle", "pancit", "canton", "lucky me", "nissin", "ramen"]],
+  ["☕", ["coffee", "kape", "kopiko", "nescafe", "great taste", "3-in-1", "3in1"]],
+  ["🧃", ["juice", "c2", "tang", "zest"]],
+  ["💧", ["water", "tubig", "mineral"]],
+  ["🥤", ["coke", "sprite", "royal", "pepsi", "softdrink", "soft drink", "soda", "mismo", "mountain dew", "7up", "sting", "gatorade"]],
+  ["🧴", ["shampoo", "conditioner", "lotion", "sunsilk", "palmolive", "creamsilk"]],
+  ["🧼", ["soap", "sabon", "safeguard", "dove", "detergent", "surf", "tide", "bleach", "zonrox"]],
+  ["🪥", ["toothpaste", "toothbrush", "colgate", "close up"]],
+  ["🧻", ["tissue", "napkin"]],
+  ["🍞", ["bread", "pandesal", "tasty"]],
+  ["🍪", ["biscuit", "cracker", "skyflakes", "sky flakes", "fita", "cookie", "oreo", "rebisco", "hello panda"]],
+  ["🍫", ["chocolate", "choco", "cloud 9", "snickers"]],
+  ["🍬", ["candy", "sweet", "lollipop", "menthol", "mentos", "hany", "pastillas"]],
+  ["🍿", ["chips", "piattos", "chippy", "nova", "popcorn", "v-cut", "oishi"]],
+  ["🥫", ["sardines", "corned", "tuna", "canned", "ligo", "555", "argentina", "mega"]],
+  ["🧂", ["salt", "asin", "pepper", "vetsin", "ajinomoto", "toyo", "soy", "suka", "vinegar", "patis", "ketchup", "sauce", "magic sarap", "seasoning"]],
+  ["🍚", ["rice", "bigas"]],
+  ["🥚", ["egg", "itlog"]],
+  ["🛢️", ["oil", "mantika"]],
+  ["🔋", ["battery", "baterya", "eveready"]]
+];
+
+function guessIcon(name) {
+  const text = String(name).toLowerCase();
+  for (let i = 0; i < ICON_GUESS.length; i++) {
+    const words = ICON_GUESS[i][1];
+    if (words.some(function (word) { return text.includes(word); })) {
+      return ICON_GUESS[i][0];
+    }
+  }
+  return "🛒";
+}
+
+function productIcon(p) {
+  return p.icon || guessIcon(p.name);
+}
+
+function tileColors(p) {
+  const index = PRODUCT_ICONS.indexOf(productIcon(p));
+  return TILE_COLORS[(index < 0 ? 0 : index) % TILE_COLORS.length];
+}
+
+// The round colored letter next to a person's name in Utang
+const AVATAR_COLORS = ["#e55a0e", "#1769e8", "#0a8f57", "#6d3fd1", "#d6336c", "#0b7285", "#a15c07", "#5f3dc4"];
+
+function avatarHtml(name) {
+  const key = debtKey(name);
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  const letter = String(name).trim().charAt(0).toUpperCase() || "?";
+  return '<span class="avatar" style="background:' + AVATAR_COLORS[hash % AVATAR_COLORS.length] + '">' + escapeHtml(letter) + "</span>";
+}
+
+// Money buttons use the color of the real peso bills
+const BILL_CLASS = { 20: "b20", 50: "b50", 100: "b100", 200: "b200", 500: "b500", 1000: "b1000" };
+
+// ----- the row of pictures to choose from (Add product and Edit product) -----
+let newIcon = "";
+let editIcon = "";
+
+function buildIconPicker(id) {
+  byId(id).innerHTML = PRODUCT_ICONS.map(function (icon) {
+    return '<button type="button" class="icon-opt" data-icon="' + icon + '">' + icon + "</button>";
+  }).join("");
+}
+
+function setPickedIcon(id, icon) {
+  byId(id).querySelectorAll(".icon-opt").forEach(function (button) {
+    button.classList.toggle("picked", button.getAttribute("data-icon") === icon);
+  });
+}
+
+// Tapping the same picture again un-picks it (so it goes back to guessing)
+byId("new-icons").addEventListener("click", function (event) {
+  const button = event.target.closest(".icon-opt");
+  if (button) {
+    const icon = button.getAttribute("data-icon");
+    newIcon = newIcon === icon ? "" : icon;
+    setPickedIcon("new-icons", newIcon);
+  }
+});
+byId("edit-icons").addEventListener("click", function (event) {
+  const button = event.target.closest(".icon-opt");
+  if (button) {
+    const icon = button.getAttribute("data-icon");
+    editIcon = editIcon === icon ? "" : icon;
+    setPickedIcon("edit-icons", editIcon);
+  }
+});
+buildIconPicker("new-icons");
+buildIconPicker("edit-icons");
+
+// ----- quick amounts for GCash / Maya (tap instead of typing) -----
+const WALLET_QUICK = [100, 200, 300, 500, 1000, 2000];
+
+byId("wallet-quick").innerHTML = WALLET_QUICK.map(function (amount) {
+  return '<button type="button" class="bill ' + (BILL_CLASS[amount] || "bx") + '" data-amount="' + amount + '">₱' + amount + "</button>";
+}).join("");
+
+byId("wallet-quick").addEventListener("click", function (event) {
+  const button = event.target.closest("button");
+  if (!button) { return; }
+  byId("wallet-amount").value = button.getAttribute("data-amount");
+  feeEdited = false;
+  updateWalletSheet();
+});
 
 
 /* ---------- 12. BACKUP AND RESTORE ----------

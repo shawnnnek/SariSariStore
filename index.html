@@ -20,7 +20,7 @@
 <body>
 
   <header>
-    <h1>My Sari-Sari POS</h1>
+    <h1>🏪 My Sari-Sari POS</h1>
     <div class="today">
       Today <strong id="today-total">₱0.00</strong>
       &middot; <span id="today-count">0</span> transactions
@@ -44,12 +44,12 @@
       <h2>GCash &amp; Maya</h2>
       <div class="wallet-row">
         <button type="button" class="wallet-tile gcash" data-wallet="gcash">
-          <span class="wallet-name">GCash</span>
+          <span class="wallet-name">📱 GCash</span>
           <span class="wallet-bal" id="bal-gcash">₱0.00</span>
           <span class="wallet-sub">Tap for cash in / out</span>
         </button>
         <button type="button" class="wallet-tile maya" data-wallet="maya">
-          <span class="wallet-name">Maya</span>
+          <span class="wallet-name">📱 Maya</span>
           <span class="wallet-bal" id="bal-maya">₱0.00</span>
           <span class="wallet-sub">Tap for cash in / out</span>
         </button>
@@ -130,7 +130,10 @@
           </div>
         </div>
 
-        <button type="submit" class="primary wide">Add product</button>
+        <label>Picture (tap one, or leave it and it picks for you)</label>
+        <div id="new-icons" class="icon-picker"></div>
+
+        <button type="submit" class="primary wide">➕ Add product</button>
         <p id="form-message" class="hint"></p>
       </form>
 
@@ -161,7 +164,7 @@
       <h2>Backup</h2>
       <p class="hint">Your data lives on this device only. Save a backup file regularly, and keep a copy somewhere safe (Files, Google Drive, a flash drive).</p>
       <div class="button-row">
-        <button id="backup-btn" class="secondary">Save backup</button>
+        <button id="backup-btn" class="secondary">💾 Save backup</button>
         <button id="restore-btn" class="secondary">Restore backup</button>
       </div>
       <p id="backup-status" class="hint"></p>
@@ -186,7 +189,7 @@
       <div class="bar-label"><span id="item-count">0</span> items</div>
       <div id="cart-total" class="bar-total">₱0.00</div>
     </div>
-    <button id="charge-btn" class="primary">Charge</button>
+    <button id="charge-btn" class="primary">💰 Charge</button>
   </div>
 
   <!-- Bottom tabs -->
@@ -210,8 +213,8 @@
       <div class="change-row"><span id="change-label">Change</span><strong id="change">₱0.00</strong></div>
 
       <div class="button-row">
-        <button id="pay-cancel" class="secondary">Cancel</button>
-        <button id="pay-confirm" class="primary">Complete sale</button>
+        <button id="pay-cancel" class="secondary">❌ Cancel</button>
+        <button id="pay-confirm" class="primary">✅ Complete sale</button>
       </div>
       <button type="button" id="pay-utang" class="utang-btn">📒 Put on utang instead</button>
     </div>
@@ -225,13 +228,15 @@
       <div class="sheet-total">Balance <strong id="wallet-balance">₱0.00</strong></div>
 
       <div class="seg" role="group" aria-label="Cash in or cash out">
-        <button type="button" id="mode-in" class="active">Cash in</button>
-        <button type="button" id="mode-out">Cash out</button>
+        <button type="button" id="mode-in" class="active"><span class="flow">💵 ➜ 📱</span><span>Cash in</span></button>
+        <button type="button" id="mode-out"><span class="flow">📱 ➜ 💵</span><span>Cash out</span></button>
       </div>
       <p id="mode-hint" class="hint"></p>
 
       <label for="wallet-amount">Amount (₱)</label>
       <input type="number" id="wallet-amount" inputmode="decimal" min="1" step="0.01" placeholder="0">
+
+      <div id="wallet-quick" class="quick-cash"></div>
 
       <label for="wallet-fee">Fee (₱): filled in automatically, you can change it</label>
       <input type="number" id="wallet-fee" inputmode="decimal" min="0" step="0.01" placeholder="0">
@@ -244,8 +249,8 @@
       <p id="wallet-error" class="hint error-text"></p>
 
       <div class="button-row">
-        <button type="button" id="wallet-cancel" class="secondary">Cancel</button>
-        <button type="submit" id="wallet-confirm" class="primary" disabled>Complete</button>
+        <button type="button" id="wallet-cancel" class="secondary">❌ Cancel</button>
+        <button type="submit" id="wallet-confirm" class="primary" disabled>✅ Complete</button>
       </div>
     </form>
   </div>
@@ -265,8 +270,8 @@
       <input type="text" id="utang-by" autocomplete="off" placeholder="If someone else picked up the items">
 
       <div class="button-row">
-        <button type="button" id="utang-cancel" class="secondary">Cancel</button>
-        <button type="submit" class="primary">Charge to utang</button>
+        <button type="button" id="utang-cancel" class="secondary">❌ Cancel</button>
+        <button type="submit" class="primary">📒 Charge to utang</button>
       </div>
     </form>
   </div>
@@ -283,14 +288,14 @@
           <input type="number" id="debt-pay-amount" inputmode="decimal" min="0" step="0.01" placeholder="0">
           <button type="button" id="debt-pay-full" class="secondary">Full</button>
         </div>
-        <button type="submit" class="primary wide">Record payment</button>
+        <button type="submit" class="primary wide">💵 Record payment</button>
         <p id="debt-pay-message" class="hint error-text"></p>
       </form>
 
       <h2>History</h2>
       <div id="debt-entries" class="today-list"></div>
 
-      <button type="button" id="debt-close" class="secondary wide">Close</button>
+      <button type="button" id="debt-close" class="secondary wide">✖ Close</button>
     </div>
   </div>
 
@@ -301,6 +306,9 @@
 
       <label for="edit-name">Product name</label>
       <input type="text" id="edit-name" required>
+
+      <label>Picture (tap one)</label>
+      <div id="edit-icons" class="icon-picker"></div>
 
       <label for="edit-barcode">Barcode</label>
       <div class="inline">
@@ -326,10 +334,10 @@
       <p id="edit-message" class="hint error-text"></p>
 
       <div class="button-row">
-        <button type="button" id="edit-cancel" class="secondary">Cancel</button>
-        <button type="submit" class="primary">Save</button>
+        <button type="button" id="edit-cancel" class="secondary">❌ Cancel</button>
+        <button type="submit" class="primary">✅ Save</button>
       </div>
-      <button type="button" id="edit-delete" class="link-btn">Delete this product</button>
+      <button type="button" id="edit-delete" class="link-btn">🗑 Delete this product</button>
     </form>
   </div>
 

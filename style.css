@@ -94,7 +94,7 @@ h2 {
   border-left: 5px solid var(--accent);
 }
 #view-today { --accent: #f0a91c; }
-#view-products { --accent: #7a766b; }
+#view-products { --accent: #c2255c; --accent-soft: #fde4ee; }
 
 /* ---------- Inputs (16px+ stops iPhone zooming in when you tap them) ---------- */
 label {
@@ -226,16 +226,75 @@ button.wide { width: 100%; margin-top: 18px; }
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  min-height: 104px;
+  min-height: 138px;
   padding: 12px;
   text-align: left;
-  background: var(--card);
+  background: var(--tile-bg, var(--card));
   color: var(--text);
-  border: 2px solid var(--border);
-  box-shadow: 0 4px 0 #ddd8cc;
+  border: 3px solid var(--tile-border, var(--border));
+  box-shadow: 0 5px 0 var(--tile-border, #ddd8cc);
 }
-.tile:active:not(:disabled) { box-shadow: 0 1px 0 #ddd8cc; }
-.tile.in-cart { border-color: var(--sales); background: var(--sales-soft); }
+.tile:active:not(:disabled) { box-shadow: 0 1px 0 var(--tile-border, #ddd8cc); }
+/* a product that is already in the sale gets a thick orange outline */
+.tile.in-cart { border-color: var(--sales); box-shadow: 0 0 0 4px rgba(229, 90, 14, 0.35), 0 5px 0 var(--sales); }
+.tile-icon { font-size: 42px; line-height: 1.1; margin-bottom: 2px; }
+
+.cart-icon { font-size: 32px; line-height: 1; flex: none; }
+.prod-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  border: 2px solid;
+  font-size: 28px;
+}
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 23px;
+  font-weight: 800;
+}
+
+/* pick-a-picture grid */
+.icon-picker { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.icon-opt {
+  min-height: 46px;
+  padding: 0;
+  font-size: 24px;
+  background: #fff;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  box-shadow: none;
+}
+.icon-opt.picked { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* money buttons in the colors of the real peso bills */
+.quick-cash button.bill {
+  color: #fff;
+  border-color: rgba(0, 0, 0, 0.15);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.28);
+  min-height: 54px;
+  font-size: 20px;
+  font-weight: 800;
+}
+.quick-cash button.bill:active:not(:disabled) { box-shadow: 0 0 0 rgba(0, 0, 0, 0.28); }
+.quick-cash button.b20   { background: #f08a1c; }
+.quick-cash button.b50   { background: #e0475b; }
+.quick-cash button.b100  { background: #7b4fd0; }
+.quick-cash button.b200  { background: #2f9e5b; }
+.quick-cash button.b500  { background: #f2c230; color: #3a2e00; }
+.quick-cash button.b1000 { background: #2f6fd0; }
+.quick-cash button.bx    { background: #e4e0d6; color: #333; }
+.quick-cash button.exact { background: #3a3a36; }
 .tile-name { font-size: 16px; font-weight: 700; line-height: 1.25; padding-right: 26px; }
 .tile-price { margin-top: auto; font-size: 21px; font-weight: 800; color: var(--sales); font-variant-numeric: tabular-nums; }
 .tile-stock { font-size: 13px; font-weight: 500; color: var(--muted); }
@@ -266,7 +325,11 @@ button.wide { width: 100%; margin-top: 18px; }
   border-bottom: 1px solid var(--border);
 }
 .cart-list li:last-child { border-bottom: none; }
-.cart-info { flex: 1; min-width: 0; }
+/* name on the first line; the - 1 + buttons and the price on the second line */
+.cart-list li { flex-wrap: wrap; row-gap: 8px; }
+.cart-info { flex: 1 1 60%; min-width: 0; }
+.stepper { margin-left: 42px; }
+.cart-line-total { margin-left: auto; }
 .cart-name { font-size: 16px; font-weight: 700; }
 .cart-sub { font-size: 13px; color: var(--muted); }
 .stepper { display: flex; align-items: center; gap: 6px; }
@@ -378,7 +441,22 @@ button.wide { width: 100%; margin-top: 18px; }
 .wallet-sub { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, 0.88); }
 
 .seg { display: flex; margin: 14px 0 4px; border: 2px solid var(--accent); border-radius: 12px; overflow: hidden; }
-.seg button { flex: 1; border-radius: 0; border: none; background: #fff; color: var(--accent); box-shadow: none; min-height: 54px; }
+.seg button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1.1;
+  border-radius: 0;
+  border: none;
+  background: #fff;
+  color: var(--accent);
+  box-shadow: none;
+  min-height: 76px;
+}
+.flow { font-size: 24px; }
 .seg button.active { background: var(--accent); color: #fff; }
 
 select {
@@ -444,23 +522,26 @@ select {
   height: var(--tabs-h);
   min-height: 0;
   border-radius: 0;
-  background: none;
-  color: #b8b5ab;
-  font-size: 13px;
-  font-weight: 700;
+  background: var(--tab-dark, #333);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 14px;
+  font-weight: 800;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
   padding: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
 }
-.tab-icon { font-size: 22px; line-height: 1; }
-.tab.active { color: #fff; background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 4px 0 var(--tab-color, #fff); }
-.tab[data-view="sell"]     { --tab-color: var(--sales); }
-.tab[data-view="today"]    { --tab-color: #f5b83d; }
-.tab[data-view="utang"]    { --tab-color: #9b78f0; }
-.tab[data-view="products"] { --tab-color: #cfcabd; }
+.tab:last-child { border-right: none; }
+.tab-icon { font-size: 26px; line-height: 1; }
+/* every tab has its own color: the one you are on is bright, the others are darker */
+.tab.active { background: var(--tab-color); color: #fff; box-shadow: inset 0 5px 0 rgba(255, 255, 255, 0.55); }
+.tab[data-view="sell"]     { --tab-color: #e55a0e; --tab-dark: #7d3a10; }
+.tab[data-view="today"]    { --tab-color: #d99a00; --tab-dark: #735200; }
+.tab[data-view="utang"]    { --tab-color: #6d3fd1; --tab-dark: #3d2380; }
+.tab[data-view="products"] { --tab-color: #c2255c; --tab-dark: #6b1634; }
 
 /* ---------- Sheets and overlays ---------- */
 .overlay {
@@ -483,6 +564,14 @@ select {
   border-top: 8px solid var(--accent);
   border-radius: 18px 18px 0 0;
   padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+}
+/* the Cancel / Complete buttons stay visible at the bottom, even when the sheet is tall */
+.sheet .button-row {
+  position: sticky;
+  bottom: 0;
+  margin-top: 8px;
+  padding: 12px 0 calc(2px + env(safe-area-inset-bottom));
+  background: var(--card);
 }
 .sheet h2 { margin-top: 0; padding-left: 0; border-left: none; font-size: 20px; text-transform: none; letter-spacing: 0; color: var(--accent); }
 .sheet-total { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
