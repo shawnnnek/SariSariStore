@@ -28,7 +28,7 @@ const SETTINGS_KEY = "pos_settings";      // on/off switches
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
 const DEFAULT_SETTINGS = { bestOnly: true, voice: true, storeName: "" };
 const BEST_COUNT = 10;
-const APP_VERSION = "v8 - Nov 12";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v9 - Nov 12";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // Starting values for GCash / Maya. Your numbers are typed in the app (Products tab),
 // NOT written here, because this code is public on GitHub.
@@ -2419,14 +2419,18 @@ function filipinoVoice() {
   return null;
 }
 
-// label = "Total", "Sukli" or "Kulang pa". Uses a Filipino voice if the phone has one, otherwise English.
-function speakAmount(label, amount, force) {
+// parts = a list like [["Natanggap", 500], ["Sukli", 350]]. Uses a Filipino voice if the phone has one, otherwise English.
+const ENGLISH_LABELS = { "Total": "Total", "Natanggap": "Received", "Sukli": "Change", "Kulang pa": "Short by" };
+
+function speakParts(parts, force) {
   if ((settings.voice === false && !force) || !("speechSynthesis" in window)) { return; }
   try {
     const voice = filipinoVoice();
-    const text = voice
-      ? label + ", " + tagalogPeso(amount)
-      : (label === "Sukli" ? "Change" : label === "Total" ? "Total" : "Short by") + ", " + englishPeso(amount);
+    const text = parts.map(function (part) {
+      return voice
+        ? part[0] + ", " + tagalogPeso(part[1]) + "."
+        : ENGLISH_LABELS[part[0]] + ", " + englishPeso(part[1]) + ".";
+    }).join(" ");
     const talk = new SpeechSynthesisUtterance(text);
     if (voice) { talk.voice = voice; talk.lang = voice.lang; } else { talk.lang = "en-US"; }
     talk.rate = 0.9;
@@ -2435,21 +2439,26 @@ function speakAmount(label, amount, force) {
   } catch (error) {}
 }
 
-// What the pay sheet should say right now: sukli if enough cash was given, otherwise the total
+function speakAmount(label, amount, force) {
+  speakParts([[label, amount]], force);
+}
+
+// What the pay sheet should say right now:
+// cash given and enough = "Received 500 pesos. Change 350 pesos." / too little = "Short by ..." / no cash yet = the total
 function speakPayState() {
   const cash = parseFloat(document.getElementById("cash-input").value);
   const total = cartTotal();
   if (isNaN(cash)) {
     speakAmount("Total", total);
   } else if (cash < total) {
-    speakAmount("Kulang pa", total - cash);
+    speakParts([["Natanggap", cash], ["Kulang pa", total - cash]]);
   } else {
-    speakAmount("Sukli", cash - total);
+    speakParts([["Natanggap", cash], ["Sukli", round2(cash - total)]]);
   }
 }
 
 document.getElementById("pay-speak").addEventListener("click", function () { speakPayState(); });
-// Tapping a bill (₱100, ₱500...) says the sukli right away
+// Tapping a bill (₱100, ₱500...) says the received cash and the sukli right away
 document.getElementById("quick-cash").addEventListener("click", function (event) {
   if (event.target.closest("button")) { speakPayState(); }
 });
@@ -2478,7 +2487,7 @@ document.getElementById("voice-toggle").addEventListener("change", function () {
   renderVoiceSettings();
 });
 document.getElementById("voice-test").addEventListener("click", function () {
-  speakAmount("Sukli", 150.5, true);
+  speakParts([["Natanggap", 200], ["Sukli", 49.5]], true);
 });
 if ("speechSynthesis" in window) {
   // the list of voices can load a moment after the page opens
