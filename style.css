@@ -741,10 +741,4 @@ select {
 .receipt-paper { background: #fff; border: 2px dashed #bbb; border-radius: 8px; padding: 16px 14px; margin-bottom: 14px; font-family: "Courier New", monospace; font-size: 14px; line-height: 1.45; white-space: pre-wrap; color: #111; }
 .receipt-paper div:first-child { text-align: center; font-weight: 800; font-size: 17px; }
 .voice-row { margin: 12px 0; }
-@media print {
-  body.printing-receipt > *:not(#receipt-overlay) { display: none !important; }
-  body.printing-receipt #receipt-overlay { position: static; background: none; display: block; }
-  body.printing-receipt .sheet { border: none; box-shadow: none; max-height: none; padding: 0; }
-  body.printing-receipt .receipt-actions { display: none !important; }
-  body.printing-receipt .receipt-paper { border: none; font-size: 12px; max-width: 58mm; }
-}
+

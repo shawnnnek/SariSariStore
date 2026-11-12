@@ -28,7 +28,7 @@ const SETTINGS_KEY = "pos_settings";      // on/off switches
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
 const DEFAULT_SETTINGS = { bestOnly: true, voice: true, storeName: "" };
 const BEST_COUNT = 10;
-const APP_VERSION = "v9 - Nov 12";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v10 - Nov 12";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // Starting values for GCash / Maya. Your numbers are typed in the app (Products tab),
 // NOT written here, because this code is public on GitHub.
@@ -2339,10 +2339,41 @@ document.getElementById("receipt-share").addEventListener("click", function () {
     navigator.clipboard.writeText(receiptText).then(function () { alert("Na-copy ang resibo."); }).catch(function () {});
   }
 });
+// Print: the receipt goes into its own hidden page (an iframe) and only that page is printed.
+// (Printing the whole app page made iPhone print the screen, not the receipt.)
+let printFrame = null;
 document.getElementById("receipt-print").addEventListener("click", function () {
-  document.body.classList.add("printing-receipt");
-  window.print();
-  setTimeout(function () { document.body.classList.remove("printing-receipt"); }, 500);
+  if (printFrame) { printFrame.remove(); printFrame = null; }
+  const lines = receiptText.split("\n");
+  const body = lines.map(function (line, i) {
+    return '<div class="' + (i === 0 ? "store" : "") + '">' + (escapeHtml(line) || "&nbsp;") + "</div>";
+  }).join("");
+  const page = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Resibo</title><style>" +
+    "@page { margin: 8mm; }" +
+    "body { margin: 0; background: #fff; color: #000; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.45; }" +
+    ".receipt { width: 72mm; max-width: 100%; white-space: pre-wrap; }" +
+    ".store { text-align: center; font-weight: bold; font-size: 16px; }" +
+    "</style></head><body><div class=\"receipt\">" + body + "</div></body></html>";
+
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none;";
+  document.body.appendChild(frame);
+  printFrame = frame;
+  const doc = frame.contentDocument || frame.contentWindow.document;
+  doc.open();
+  doc.write(page);
+  doc.close();
+  // give the little page a moment to draw, then open the print screen
+  setTimeout(function () {
+    try {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    } catch (error) {
+      window.print();
+    }
+  }, 400);
+  setTimeout(function () { if (printFrame === frame) { frame.remove(); printFrame = null; } }, 120000);
 });
 
 // ----- Boses: say the total and the sukli out loud -----
