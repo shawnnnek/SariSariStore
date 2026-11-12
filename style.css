@@ -724,3 +724,7 @@ select {
 .zoom-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: #f4f2ee; font-weight: 800; }
 .zoom-row input { flex: 1; min-width: 0; height: 32px; }
 .zoom-row[hidden] { display: none; }
+
+#scanner-overlay { overflow-y: auto; align-items: flex-start; }
+.scanner-box .scanner-done { margin: 0 0 12px; }
+#scanner-overlay { background: #141412; }

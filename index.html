@@ -449,6 +449,8 @@
   <!-- ============ CAMERA SCANNER ============ -->
   <div id="scanner-overlay" class="overlay dark" hidden>
     <div class="scanner-box">
+      <!-- Done is at the top so the camera picture can never cover it -->
+      <button id="scanner-close" class="primary wide scanner-done">Done</button>
       <div id="reader"></div>
       <!-- Zoom slider: only shown on phones whose camera allows zoom -->
       <div id="zoom-row" class="zoom-row" hidden>
@@ -457,11 +459,6 @@
         <span id="zoom-value">1x</span>
       </div>
       <p id="scanner-status" class="scanner-status"></p>
-      <!-- Backup way to scan: take a photo of the barcode with the phone's normal camera -->
-      <button type="button" id="scanner-photo-btn" class="secondary wide">🖼️ Kunan ng litrato ang barcode</button>
-      <input type="file" id="scanner-photo" accept="image/*" capture="environment" hidden>
-      <div id="photo-holder" hidden></div>
-      <button id="scanner-close" class="primary wide">Done</button>
     </div>
   </div>
 

@@ -1169,7 +1169,6 @@ async function stopLive() {
 }
 
 async function closeScanner() {
-  photoPending = false;
   await stopLive();
   document.getElementById("scanner-overlay").hidden = true;
 }
@@ -1197,83 +1196,6 @@ function onScanSuccess(code, force) {
   beep(result.ok);
   setScannerStatus(result.text);
 }
-
-/* ----- Backup way: take a photo of the barcode with the phone's normal camera -----
-   Useful when the live camera view won't start or won't focus.
-   The photo is read by the browser's BarcodeDetector if it has one, otherwise by the library. */
-let photoPending = false;
-
-async function decodePhoto(file) {
-  // 1) the browser's own barcode reader (Chrome on Android, newer Safari)
-  if ("BarcodeDetector" in window) {
-    try {
-      const detector = new BarcodeDetector({ formats: SCAN_FORMAT_NAMES });
-      const bitmap = await createImageBitmap(file);
-      const found = await detector.detect(bitmap);
-      if (found.length > 0 && found[0].rawValue) {
-        return found[0].rawValue;
-      }
-    } catch (error) {}
-  }
-  // 2) the library
-  await loadScannerLibrary();
-  const reader = new Html5Qrcode("photo-holder", { verbose: false, formatsToSupport: scanFormats() });
-  try {
-    return await reader.scanFile(file, false);
-  } finally {
-    try { reader.clear(); } catch (error) {}
-  }
-}
-
-document.getElementById("scanner-photo-btn").addEventListener("click", function () {
-  unlockAudio();
-  photoPending = true;
-  document.getElementById("scanner-photo").click();   // must happen right at the tap
-  setScannerStatus("Kunan ng litrato ang barcode. Lapit at kita ang buong barcode.");
-  stopLive();
-});
-
-document.getElementById("scanner-photo").addEventListener("change", async function () {
-  const file = this.files[0];
-  this.value = "";
-  photoPending = false;
-  if (!file) {
-    await startLive();
-    return;
-  }
-
-  setScannerStatus("Binabasa ang litrato...");
-  let code = "";
-  try {
-    code = await decodePhoto(file);
-  } catch (error) {
-    code = "";
-  }
-
-  if (!code) {
-    beep(false);
-    if (scannerMode === "sell") { await startLive(); }
-    setScannerStatus("Hindi nabasa ang barcode. Subukan ulit: lapitan, may ilaw, at kita ang buong barcode.");
-    return;
-  }
-  onScanSuccess(String(code).trim(), true);
-  if (scannerMode === "sell") {
-    const text = document.getElementById("scanner-status").textContent;
-    await startLive();
-    setScannerStatus(text);
-  }
-});
-
-// If the photo screen is closed without taking a photo, bring the live camera back.
-window.addEventListener("focus", function () {
-  if (!photoPending) { return; }
-  setTimeout(function () {
-    if (photoPending) {
-      photoPending = false;
-      startLive();
-    }
-  }, 1500);
-});
 
 document.getElementById("camera-btn").addEventListener("click", function () { openScanner("sell"); });
 document.getElementById("fill-camera-btn").addEventListener("click", function () { openScanner("fill"); });
