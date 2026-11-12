@@ -26,8 +26,9 @@ const OWN_KEY = "pos_own";                // items taken "para samen" (for ourse
 const SETTINGS_KEY = "pos_settings";      // on/off switches
 
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
-const DEFAULT_SETTINGS = { bestOnly: true };
+const DEFAULT_SETTINGS = { bestOnly: true, voice: true, storeName: "" };
 const BEST_COUNT = 10;
+const APP_VERSION = "v8 - Nov 12";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // Starting values for GCash / Maya. Your numbers are typed in the app (Products tab),
 // NOT written here, because this code is public on GitHub.
@@ -46,6 +47,7 @@ let ewalletTx = loadData(EWALLET_TX_KEY, []);
 let ledger = loadData(LEDGER_KEY, []);
 let ownUse = loadData(OWN_KEY, []);      // "para samen": stock goes down, but it is not a sale and has no profit
 let settings = Object.assign({}, DEFAULT_SETTINGS, loadData(SETTINGS_KEY, DEFAULT_SETTINGS));
+let lastSale = null;                     // the newest finished sale (for the receipt button)
 let ownMode = false;                     // true while the Para samen switch is ON (not saved)
 normalizeEwallet();
 
@@ -309,6 +311,7 @@ function chargeSale(cash, utang) {
     sale.change = cash - total;
   }
   sales.push(sale);
+  lastSale = sale;
 
   saveData();
 
@@ -321,6 +324,7 @@ function chargeSale(cash, utang) {
 
   cart = [];
   renderAll();
+  showLastReceiptButton();
 }
 
 // PARA SAMEN: we take the items ourselves.
@@ -651,6 +655,7 @@ function txnHtml(events, showDay, emptyText) {
   let html = "";
 
   events.forEach(function (event) {
+    const before = html.length;
     const d = event.data;
     const when = (showDay ? escapeHtml(dayLabel(d.date)) + " &middot; " : "") + escapeHtml(d.time);
 
@@ -719,6 +724,16 @@ function txnHtml(events, showDay, emptyText) {
         '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag">' + WALLET_NAMES[d.wallet] + " balance changed</span></span>" +
         '<span class="txn-pay">' + (d.walletDelta >= 0 ? "+" : "&minus;") + peso(Math.abs(d.walletDelta)) + "</span></div>" +
         '<div class="txn-pay">New balance ' + peso(d.balanceAfter) + "</div></div>";
+    }
+
+    // buttons under each entry: Resibo (sales only) and Burahin (undo)
+    if (["sale", "wallet", "payment", "own"].indexOf(event.kind) >= 0) {
+      const block = html.slice(before);
+      const attrs = ' data-kind="' + event.kind + '" data-order="' + event.order + '"';
+      const buttons = '<div class="txn-actions">' +
+        (event.kind === "sale" ? '<button type="button" class="txn-btn" data-act="receipt"' + attrs + ">🧾 Resibo</button>" : "") +
+        '<button type="button" class="txn-btn undo" data-act="undo"' + attrs + ">🗑️ Burahin</button></div>";
+      html = html.slice(0, before) + block.slice(0, -6) + buttons + "</div>";
     }
   });
 
@@ -873,6 +888,7 @@ function openPay() {
   document.getElementById("cash-input").value = "";
   updateChange();
   document.getElementById("pay-overlay").hidden = false;
+  speakAmount("Total", cartTotal());
 }
 
 function closePay() {
@@ -2204,6 +2220,273 @@ document.getElementById("reset-btn").addEventListener("click", function () {
 });
 
 
+
+/* ---------- 10b. BURAHIN (UNDO), RESIBO (RECEIPT) AND BOSES (VOICE) ---------- */
+
+// ----- Burahin: take back a wrong entry -----
+function undoEntry(kind, order) {
+  if (kind === "sale") {
+    const sale = sales[order];
+    if (!sale) { return; }
+    const extra = sale.utang ? "\n\nTatanggalin din sa utang ni " + sale.utang.name + "." : "";
+    if (!confirm("Burahin ang benta na " + peso(sale.total) + "?\n\nBabalik sa stock ang mga paninda." + extra)) { return; }
+    sale.items.forEach(function (item) {
+      const product = findProduct(item.barcode);
+      if (product) { product.stock += item.qty; }
+    });
+    if (sale.utang) {
+      const at = ledger.findIndex(function (e) {
+        return e.type === "charge" && e.ts === sale.ts && e.name === sale.utang.name;
+      });
+      if (at >= 0) { ledger.splice(at, 1); }
+    }
+    sales.splice(order, 1);
+    if (lastSale === sale) { lastSale = null; }
+    showMessage("Nabura ang benta. Bumalik ang stock.", "ok");
+
+  } else if (kind === "own") {
+    const entry = ownUse[order];
+    if (!entry) { return; }
+    if (!confirm("Burahin ang Para samen na ito?\n\nBabalik sa stock ang mga paninda.")) { return; }
+    entry.items.forEach(function (item) {
+      const product = findProduct(item.barcode);
+      if (product) { product.stock += item.qty; }
+    });
+    ownUse.splice(order, 1);
+    showMessage("Nabura ang Para samen. Bumalik ang stock.", "ok");
+
+  } else if (kind === "wallet") {
+    const tx = ewalletTx[order];
+    if (!tx) { return; }
+    if (!confirm("Burahin ang " + WALLET_NAMES[tx.wallet] + (tx.type === "in" ? " cash in " : " cash out ") + peso(tx.amount) + "?\n\nBabalik ang balance ng " + WALLET_NAMES[tx.wallet] + ".")) { return; }
+    ewallet[tx.wallet].balance = round2(ewallet[tx.wallet].balance - tx.walletDelta);
+    ewalletTx.splice(order, 1);
+    showMessage("Nabura. Naayos ang balance.", "ok");
+
+  } else if (kind === "payment") {
+    const entry = ledger[order];
+    if (!entry || entry.type !== "payment") { return; }
+    if (!confirm("Burahin ang bayad na " + peso(entry.amount) + " ni " + entry.name + "?\n\nBabalik ang utang niya.")) { return; }
+    ledger.splice(order, 1);
+    showMessage("Nabura ang bayad. Bumalik ang utang.", "ok");
+  } else {
+    return;
+  }
+  saveData();
+  renderAll();
+}
+
+// One click handler for the buttons in both transaction lists
+function txnButtonClick(event) {
+  const button = event.target.closest(".txn-btn");
+  if (!button) { return; }
+  const kind = button.getAttribute("data-kind");
+  const order = parseInt(button.getAttribute("data-order"), 10);
+  if (button.getAttribute("data-act") === "receipt") {
+    openReceipt(sales[order]);
+  } else {
+    undoEntry(kind, order);
+  }
+}
+document.getElementById("today-list").addEventListener("click", txnButtonClick);
+document.getElementById("week-list").addEventListener("click", txnButtonClick);
+
+// ----- Resibo -----
+let receiptText = "";
+
+function receiptLines(sale) {
+  const name = (settings.storeName || "").trim() || "Sari-Sari Store";
+  const lines = [name, dayLabelLong(sale.date) + " " + sale.time, "--------------------------------"];
+  sale.items.forEach(function (item) {
+    lines.push(item.qty + " x " + item.name);
+    lines.push("     " + peso(item.price) + " = " + peso(item.price * item.qty));
+  });
+  lines.push("--------------------------------");
+  lines.push("TOTAL: " + peso(sale.total));
+  if (sale.utang) {
+    lines.push("UTANG: " + sale.utang.name);
+  } else if (typeof sale.cash === "number") {
+    lines.push("Cash: " + peso(sale.cash));
+    lines.push("Sukli: " + peso(sale.change));
+  }
+  lines.push("");
+  lines.push("Salamat po! Balik kayo.");
+  return lines;
+}
+
+function openReceipt(sale) {
+  if (!sale) { return; }
+  const lines = receiptLines(sale);
+  receiptText = lines.join("\n");
+  document.getElementById("receipt-paper").innerHTML = lines.map(function (l) {
+    return "<div>" + (escapeHtml(l) || "&nbsp;") + "</div>";
+  }).join("");
+  document.getElementById("receipt-overlay").hidden = false;
+}
+
+function showLastReceiptButton() {
+  document.getElementById("last-receipt-btn").hidden = !lastSale;
+}
+
+document.getElementById("last-receipt-btn").addEventListener("click", function () { openReceipt(lastSale); });
+document.getElementById("receipt-close").addEventListener("click", function () {
+  document.getElementById("receipt-overlay").hidden = true;
+});
+document.getElementById("receipt-share").addEventListener("click", function () {
+  if (navigator.share) {
+    navigator.share({ text: receiptText }).catch(function () {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(receiptText).then(function () { alert("Na-copy ang resibo."); }).catch(function () {});
+  }
+});
+document.getElementById("receipt-print").addEventListener("click", function () {
+  document.body.classList.add("printing-receipt");
+  window.print();
+  setTimeout(function () { document.body.classList.remove("printing-receipt"); }, 500);
+});
+
+// ----- Boses: say the total and the sukli out loud -----
+// Words for a number in Tagalog (for example 150 = "isandaan at limampu").
+const T_ONES = ["", "isa", "dalawa", "tatlo", "apat", "lima", "anim", "pito", "walo", "siyam"];
+const T_TEENS = ["sampu", "labing-isa", "labindalawa", "labintatlo", "labing-apat", "labinlima", "labing-anim", "labimpito", "labingwalo", "labinsiyam"];
+const T_TENS = ["", "", "dalawampu", "tatlumpu", "apatnapu", "limampu", "animnapu", "pitumpu", "walumpu", "siyamnapu"];
+const T_HUNDREDS = ["", "isandaan", "dalawandaan", "tatlondaan", "apatnaraan", "limandaan", "animnaraan", "pitondaan", "walondaan", "siyamnaraan"];
+
+function tagalogUnder1000(n) {
+  const parts = [];
+  const h = Math.floor(n / 100);
+  const rest = n % 100;
+  if (h > 0) { parts.push(T_HUNDREDS[h]); }
+  let small = "";
+  if (rest >= 20) {
+    small = T_TENS[Math.floor(rest / 10)] + (rest % 10 ? "'t " + T_ONES[rest % 10] : "");
+  } else if (rest >= 10) {
+    small = T_TEENS[rest - 10];
+  } else if (rest > 0) {
+    small = T_ONES[rest];
+  }
+  if (small) { parts.push(small); }
+  return parts.join(" at ");
+}
+
+// "limampu" + "piso" -> "limampung piso" (the little linking sound)
+function linkWord(words) {
+  if (/[aeiou]$/.test(words)) { return words + "ng"; }
+  if (/n$/.test(words)) { return words + "g"; }
+  return words + " na";              // words ending in t or m: apat na, anim na, siyam na
+}
+
+function tagalogNumber(n) {
+  if (n === 0) { return "sero"; }
+  const thousands = Math.floor(n / 1000);
+  const rest = n % 1000;
+  let text = "";
+  if (thousands > 0) {
+    text = linkWord(tagalogUnder1000(thousands)) + " libo";
+    if (rest > 0) { text += (rest >= 100 && rest % 100 !== 0 ? ", " : " at ") + tagalogUnder1000(rest); }
+  } else {
+    text = tagalogUnder1000(rest);
+  }
+  return text;
+}
+
+function tagalogPeso(amount) {
+  amount = round2(amount);
+  const pesos = Math.floor(amount);
+  const cents = Math.round((amount - pesos) * 100);
+  let text = linkWord(tagalogNumber(pesos)) + " piso";
+  if (pesos === 0) { text = "sero piso"; }
+  if (cents > 0) { text += " at " + linkWord(tagalogNumber(cents)) + " sentimo"; }
+  return text;
+}
+
+function englishPeso(amount) {
+  amount = round2(amount);
+  const pesos = Math.floor(amount);
+  const cents = Math.round((amount - pesos) * 100);
+  let text = pesos + (pesos === 1 ? " peso" : " pesos");
+  if (cents > 0) { text += " and " + cents + " centavos"; }
+  return text;
+}
+
+function filipinoVoice() {
+  if (!("speechSynthesis" in window)) { return null; }
+  const voices = window.speechSynthesis.getVoices();
+  for (let i = 0; i < voices.length; i++) {
+    const lang = voices[i].lang.toLowerCase().replace("_", "-");
+    if (lang.indexOf("fil") === 0 || lang.indexOf("tl") === 0) { return voices[i]; }
+  }
+  return null;
+}
+
+// label = "Total", "Sukli" or "Kulang pa". Uses a Filipino voice if the phone has one, otherwise English.
+function speakAmount(label, amount, force) {
+  if ((settings.voice === false && !force) || !("speechSynthesis" in window)) { return; }
+  try {
+    const voice = filipinoVoice();
+    const text = voice
+      ? label + ", " + tagalogPeso(amount)
+      : (label === "Sukli" ? "Change" : label === "Total" ? "Total" : "Short by") + ", " + englishPeso(amount);
+    const talk = new SpeechSynthesisUtterance(text);
+    if (voice) { talk.voice = voice; talk.lang = voice.lang; } else { talk.lang = "en-US"; }
+    talk.rate = 0.9;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(talk);
+  } catch (error) {}
+}
+
+// What the pay sheet should say right now: sukli if enough cash was given, otherwise the total
+function speakPayState() {
+  const cash = parseFloat(document.getElementById("cash-input").value);
+  const total = cartTotal();
+  if (isNaN(cash)) {
+    speakAmount("Total", total);
+  } else if (cash < total) {
+    speakAmount("Kulang pa", total - cash);
+  } else {
+    speakAmount("Sukli", cash - total);
+  }
+}
+
+document.getElementById("pay-speak").addEventListener("click", function () { speakPayState(); });
+// Tapping a bill (₱100, ₱500...) says the sukli right away
+document.getElementById("quick-cash").addEventListener("click", function (event) {
+  if (event.target.closest("button")) { speakPayState(); }
+});
+
+// Settings: store name, voice switch, test
+function renderVoiceSettings() {
+  document.getElementById("set-store-name").value = settings.storeName || "";
+  document.getElementById("voice-toggle").checked = settings.voice !== false;
+  document.getElementById("voice-state").textContent = settings.voice !== false ? "ON" : "OFF";
+  const info = document.getElementById("voice-info");
+  if (!("speechSynthesis" in window)) {
+    info.textContent = "Walang boses ang phone na ito.";
+  } else if (filipinoVoice()) {
+    info.textContent = "Tagalog na boses ang gagamitin.";
+  } else {
+    info.textContent = "Walang Tagalog na boses ang phone na ito, kaya English ang sasabihin. (Settings > Accessibility > Spoken Content > Voices para magdagdag ng Filipino.)";
+  }
+}
+document.getElementById("set-store-name").addEventListener("input", function () {
+  settings.storeName = this.value.trim();
+  saveData();
+});
+document.getElementById("voice-toggle").addEventListener("change", function () {
+  settings.voice = this.checked;
+  saveData();
+  renderVoiceSettings();
+});
+document.getElementById("voice-test").addEventListener("click", function () {
+  speakAmount("Sukli", 150.5, true);
+});
+if ("speechSynthesis" in window) {
+  // the list of voices can load a moment after the page opens
+  window.speechSynthesis.addEventListener("voiceschanged", renderVoiceSettings);
+}
+renderVoiceSettings();
+
+
 /* ---------- 13. RUNS WHEN THE PAGE OPENS ---------- */
 
 buildQuickCash();
@@ -2227,5 +2510,18 @@ try {
 
 // Let the page work offline: sw.js keeps a copy of the files (needs the https web link).
 if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
-  navigator.serviceWorker.register("sw.js").catch(function () {});
+  const hadWorker = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(function (reg) {
+    reg.update();                                   // look for a new version every time the app opens
+  }).catch(function () {});
+  // When a new version takes over, reload once so the new screen shows up
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", function () {
+    if (hadWorker && !reloaded) {
+      reloaded = true;
+      location.reload();
+    }
+  });
 }
+
+document.getElementById("app-version").textContent = APP_VERSION;

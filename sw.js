@@ -3,7 +3,7 @@
    - Our own files: try the internet first (so updates arrive), use the saved copy if offline.
    - The scanner library from the internet: use the saved copy first (it never changes). */
 
-const CACHE_NAME = "sari-pos-v3";
+const CACHE_NAME = "sari-pos-v4";
 const FILES = [
   "./",
   "index.html",
@@ -40,7 +40,7 @@ self.addEventListener("fetch", function (event) {
   if (sameSite) {
     // Internet first, saved copy as backup
     event.respondWith(
-      fetch(request).then(function (response) {
+      fetch(request, { cache: "no-store" }).then(function (response) {   // no-store: never use the phone's old copy
         const copy = response.clone();
         caches.open(CACHE_NAME).then(function (cache) { cache.put(request, copy); });
         return response;

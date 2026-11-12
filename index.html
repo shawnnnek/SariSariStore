@@ -40,6 +40,7 @@
         <button type="button" id="camera-btn" class="primary">📷 Scan</button>
       </form>
       <p id="message" class="message" role="status"></p>
+      <button type="button" id="last-receipt-btn" class="receipt-btn" hidden>🧾 Resibo ng huling benta</button>
 
       <h2>GCash &amp; Maya</h2>
       <div class="wallet-row">
@@ -221,6 +222,25 @@
         <p id="form-message" class="hint"></p>
       </form>
 
+      <h2>Resibo at Boses</h2>
+      <div class="add-form">
+        <label for="set-store-name">Pangalan ng tindahan (nasa resibo)</label>
+        <input type="text" id="set-store-name" autocomplete="off" placeholder="Sari-Sari Store">
+        <label class="switch-row voice-row" for="voice-toggle">
+          <span class="switch-text">
+            <span class="switch-title">🔊 Boses</span>
+            <span class="switch-note">Sinasabi ang total at sukli</span>
+          </span>
+          <span class="switch">
+            <input type="checkbox" id="voice-toggle" role="switch">
+            <span class="switch-track"><span class="switch-knob"></span></span>
+            <span id="voice-state" class="switch-state">OFF</span>
+          </span>
+        </label>
+        <button type="button" id="voice-test" class="secondary wide">▶ Subukan ang boses</button>
+        <p id="voice-info" class="hint"></p>
+      </div>
+
       <h2>GCash &amp; Maya settings</h2>
       <div class="add-form">
         <label for="set-gcash-numbers">GCash number(s)</label>
@@ -252,6 +272,7 @@
         <button id="restore-btn" class="secondary">Restore backup</button>
       </div>
       <p id="backup-status" class="hint"></p>
+      <p class="hint">App version: <strong id="app-version"></strong></p>
       <input type="file" id="restore-file" hidden>
 
       <p id="install-hint" class="hint install-hint" hidden>
@@ -290,6 +311,7 @@
     <div class="sheet">
       <h2>Bayad</h2>
       <div class="sheet-total">Total <strong id="pay-total">₱0.00</strong></div>
+      <button type="button" id="pay-speak" class="speak-btn">🔊 Pakinggan</button>
 
       <label for="cash-input">Cash na ibinayad</label>
       <input type="number" id="cash-input" inputmode="decimal" min="0" step="0.01" placeholder="0.00">
@@ -447,6 +469,18 @@
   </div>
 
   <!-- ============ CAMERA SCANNER ============ -->
+  <!-- ============ RESIBO (RECEIPT) ============ -->
+  <div id="receipt-overlay" class="overlay" hidden>
+    <div class="sheet">
+      <div id="receipt-paper" class="receipt-paper"></div>
+      <div class="button-row receipt-actions">
+        <button type="button" id="receipt-close" class="secondary">Isara</button>
+        <button type="button" id="receipt-share" class="primary">📤 Ipadala</button>
+      </div>
+      <button type="button" id="receipt-print" class="secondary wide receipt-actions">🖨️ I-print</button>
+    </div>
+  </div>
+
   <div id="scanner-overlay" class="overlay dark" hidden>
     <div class="scanner-box">
       <!-- Done is at the top so the camera picture can never cover it -->

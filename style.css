@@ -728,3 +728,23 @@ select {
 #scanner-overlay { overflow-y: auto; align-items: flex-start; }
 .scanner-box .scanner-done { margin: 0 0 12px; }
 #scanner-overlay { background: #141412; }
+
+/* ---------- Burahin, Resibo, Boses ---------- */
+.txn-actions { display: flex; gap: 8px; margin-top: 10px; }
+.txn-btn { font: inherit; font-size: 14px; font-weight: 800; padding: 9px 14px; border-radius: 12px; border: 2px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; }
+.txn-btn.undo { color: var(--danger); border-color: #f0b8b2; background: #fff5f4; }
+.txn-btn:active { transform: translateY(1px); }
+.speak-btn, .receipt-btn { font: inherit; font-weight: 800; font-size: 16px; padding: 12px 16px; border-radius: 14px; border: 2px solid var(--border); background: var(--soft); color: var(--text); cursor: pointer; }
+.speak-btn { width: 100%; margin: 8px 0 4px; background: #e8f1ff; border-color: #a9c8f7; color: #0f4fb8; }
+.receipt-btn { width: 100%; margin: 4px 0 8px; background: #fff7e0; border-color: #f0d58a; color: #7a5600; }
+.receipt-btn[hidden] { display: none; }
+.receipt-paper { background: #fff; border: 2px dashed #bbb; border-radius: 8px; padding: 16px 14px; margin-bottom: 14px; font-family: "Courier New", monospace; font-size: 14px; line-height: 1.45; white-space: pre-wrap; color: #111; }
+.receipt-paper div:first-child { text-align: center; font-weight: 800; font-size: 17px; }
+.voice-row { margin: 12px 0; }
+@media print {
+  body.printing-receipt > *:not(#receipt-overlay) { display: none !important; }
+  body.printing-receipt #receipt-overlay { position: static; background: none; display: block; }
+  body.printing-receipt .sheet { border: none; box-shadow: none; max-height: none; padding: 0; }
+  body.printing-receipt .receipt-actions { display: none !important; }
+  body.printing-receipt .receipt-paper { border: none; font-size: 12px; max-width: 58mm; }
+}
