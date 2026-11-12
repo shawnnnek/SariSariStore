@@ -22,6 +22,12 @@ const LAST_BACKUP_KEY = "pos_last_backup";
 const EWALLET_KEY = "pos_ewallet";        // GCash / Maya balances and settings
 const EWALLET_TX_KEY = "pos_ewallet_tx";  // every GCash / Maya cash in, cash out and balance change
 const LEDGER_KEY = "pos_utang";           // utang: charges and payments
+const OWN_KEY = "pos_own";                // items taken "para samen" (for ourselves)
+const SETTINGS_KEY = "pos_settings";      // on/off switches
+
+// On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
+const DEFAULT_SETTINGS = { bestOnly: true };
+const BEST_COUNT = 10;
 
 // Starting values for GCash / Maya. Your numbers are typed in the app (Products tab),
 // NOT written here, because this code is public on GitHub.
@@ -38,6 +44,9 @@ let cart = [];                          // items in the sale happening right now
 let ewallet = loadData(EWALLET_KEY, DEFAULT_EWALLET);
 let ewalletTx = loadData(EWALLET_TX_KEY, []);
 let ledger = loadData(LEDGER_KEY, []);
+let ownUse = loadData(OWN_KEY, []);      // "para samen": stock goes down, but it is not a sale and has no profit
+let settings = Object.assign({}, DEFAULT_SETTINGS, loadData(SETTINGS_KEY, DEFAULT_SETTINGS));
+let ownMode = false;                     // true while the Para samen switch is ON (not saved)
 normalizeEwallet();
 
 
@@ -64,6 +73,8 @@ function saveData() {
     localStorage.setItem(EWALLET_KEY, JSON.stringify(ewallet));
     localStorage.setItem(EWALLET_TX_KEY, JSON.stringify(ewalletTx));
     localStorage.setItem(LEDGER_KEY, JSON.stringify(ledger));
+    localStorage.setItem(OWN_KEY, JSON.stringify(ownUse));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch (error) {
     console.log("Could not save", error);
   }
@@ -92,12 +103,33 @@ function escapeHtml(text) {
     .replace(/"/g, "&quot;");
 }
 
-// Today's date in YOUR local time, like "2026-11-09" (used for the daily total)
-function todayText() {
-  const d = new Date();
+// A date in YOUR local time, like "2026-11-09" (used for the daily totals)
+function dateText(d) {
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return d.getFullYear() + "-" + month + "-" + day;
+}
+function todayText() {
+  return dateText(new Date());
+}
+// "2026-11-09" back into a date
+function parseDate(text) {
+  const part = text.split("-");
+  return new Date(Number(part[0]), Number(part[1]) - 1, Number(part[2]));
+}
+// "Mon, Nov 9"
+function dayLabel(text) {
+  return parseDate(text).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+// "Monday, November 9"
+function dayLabelLong(text) {
+  return parseDate(text).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+}
+// Small money for tiny boxes: 850 -> "850", 1200 -> "1.2k", 12500 -> "13k"
+function pesoCompact(n) {
+  if (n >= 10000) { return Math.round(n / 1000) + "k"; }
+  if (n >= 1000) { return (n / 1000).toFixed(1).replace(".0", "") + "k"; }
+  return String(Math.round(n));
 }
 
 // Camera apps sometimes read the same barcode with or without leading zeros
@@ -159,7 +191,7 @@ function addToCart(barcode) {
   const product = findProduct(barcode);
 
   if (!product) {
-    const text = "Not in your list: " + barcode;
+    const text = "Wala sa listahan: " + barcode;
     showMessage(text, "error");
     return { ok: false, text: text };
   }
@@ -171,7 +203,7 @@ function addToCart(barcode) {
 
   // Don't sell more than we have in stock.
   if (alreadyInCart + 1 > product.stock) {
-    const text = "Not enough stock for " + product.name + " (only " + product.stock + " left).";
+    const text = "Kulang ang stock ng " + product.name + " (" + product.stock + " na lang).";
     showMessage(text, "error");
     return { ok: false, text: text };
   }
@@ -201,7 +233,7 @@ function changeQty(barcode, change) {
   if (newQty <= 0) {
     cart = cart.filter(function (i) { return i.barcode !== barcode; });
   } else if (newQty > product.stock) {
-    showMessage("Only " + product.stock + " in stock for " + product.name + ".", "error");
+    showMessage(product.name + ": " + product.stock + " na lang ang stock.", "error");
     return;
   } else {
     item.qty = newQty;
@@ -228,6 +260,19 @@ function cartItemCount() {
 
 /* ---------- 5. CHARGING ---------- */
 
+// The lines of the current cart, with the puhunan (cost) remembered at this moment.
+// Later price changes then don't change old records.
+function cartLines() {
+  return cart.map(function (item) {
+    const line = { barcode: item.barcode, name: item.name, qty: item.qty, price: item.price };
+    const product = findProduct(item.barcode);
+    if (product && typeof product.cost === "number") {
+      line.cost = product.cost;
+    }
+    return line;
+  });
+}
+
 // cash can be NaN (not typed). That's fine; we just don't record change then.
 // utang is { name, takenBy } when the sale is charged to utang instead of paid in cash.
 function chargeSale(cash, utang) {
@@ -248,9 +293,7 @@ function chargeSale(cash, utang) {
     date: todayText(),
     time: new Date().toLocaleTimeString(),
     total: total,
-    items: cart.map(function (item) {
-      return { barcode: item.barcode, name: item.name, qty: item.qty, price: item.price };
-    })
+    items: cartLines()
   };
   if (utang) {
     // Not paid yet: remember who owes it, and add a charge to the utang ledger.
@@ -270,14 +313,55 @@ function chargeSale(cash, utang) {
   saveData();
 
   if (utang) {
-    showMessage("Charged to utang: " + utang.name + " " + peso(total) + ".", "ok");
+    showMessage("Nasa utang na si " + utang.name + ": " + peso(total) + ".", "ok");
   } else {
-    const changeText = isNaN(cash) ? "" : " Change: " + peso(cash - total);
-    showMessage("Sale complete: " + peso(total) + "." + changeText, "ok");
+    const changeText = isNaN(cash) ? "" : " Sukli: " + peso(cash - total);
+    showMessage("Tapos na: " + peso(total) + "." + changeText, "ok");
   }
 
   cart = [];
   renderAll();
+}
+
+// PARA SAMEN: we take the items ourselves.
+// Stock goes down, but it is NOT a sale, so it is not in the total and not in the profit.
+function takeForUs() {
+  if (cart.length === 0) {
+    return;
+  }
+  const count = cartItemCount();
+  const words = count + " item" + (count === 1 ? "" : "s");
+  if (!confirm("Kunin ang " + words + " para samen?\n\nMababawas sa stock. Hindi kasama sa benta at kita.")) {
+    return;
+  }
+
+  const items = cartLines();
+  cart.forEach(function (item) {
+    const product = findProduct(item.barcode);
+    product.stock = product.stock - item.qty;
+  });
+  ownUse.push({ ts: Date.now(), date: todayText(), time: new Date().toLocaleTimeString(), items: items });
+  cart = [];
+  saveData();
+  setOwnMode(false);                       // back to normal selling
+  renderAll();
+  showMessage("Para samen: " + words + " ang nabawas sa stock.", "ok");
+}
+
+// The Para samen switch
+function setOwnMode(on) {
+  ownMode = on;
+  document.getElementById("own-toggle").checked = on;
+  document.getElementById("own-state").textContent = on ? "ON" : "OFF";
+  document.body.classList.toggle("own-mode", on);
+  document.getElementById("cart-title").textContent = on ? "Para samen (kukunin)" : "Benta ngayon";
+  renderCheckoutBar();
+}
+
+// The Top 10 switch text
+function renderSwitches() {
+  document.getElementById("best-toggle").checked = settings.bestOnly;
+  document.getElementById("best-state").textContent = settings.bestOnly ? "ON" : "OFF";
 }
 
 
@@ -289,7 +373,7 @@ function renderTiles() {
   const query = document.getElementById("search-input").value.trim().toLowerCase();
   const sold = soldCounts();
 
-  const list = products
+  let list = products
     .filter(function (p) {
       return query === "" || p.name.toLowerCase().includes(query) || p.barcode.includes(query);
     })
@@ -297,12 +381,25 @@ function renderTiles() {
       return (sold[b.barcode] || 0) - (sold[a.barcode] || 0) || a.name.localeCompare(b.name);
     });
 
+  // Top 10 switch ON: show only the best sellers. Searching always looks through everything.
+  const note = document.getElementById("best-note");
+  if (settings.bestOnly && query === "") {
+    list = list.slice(0, BEST_COUNT);
+    note.textContent = products.length > list.length
+      ? "Ipinapakita ang " + list.length + " sa " + products.length + " na paninda. Gamitin ang search para sa iba."
+      : "Lahat ng " + products.length + " paninda ay nakikita.";
+  } else if (settings.bestOnly) {
+    note.textContent = "Search: lahat ng paninda ay hinahanap.";
+  } else {
+    note.textContent = "Lahat ng " + products.length + " paninda ang nakikita.";
+  }
+
   let html = "";
   list.forEach(function (p) {
     const inCart = cart.find(function (i) { return i.barcode === p.barcode; });
     const qty = inCart ? inCart.qty : 0;
     const soldOut = p.stock - qty <= 0;
-    const stockText = p.stock <= 0 ? "Out of stock" : (p.stock - qty) + " left";
+    const stockText = p.stock <= 0 ? "Ubos na" : (p.stock - qty) + " pa";
 
     const low = p.stock - qty <= p.reorder;            // running low: shown in red
     const colors = tileColors(p);
@@ -316,7 +413,7 @@ function renderTiles() {
   });
 
   if (list.length === 0) {
-    html = '<p class="empty">No products found.</p>';
+    html = '<p class="empty">Walang nahanap na paninda.</p>';
   }
   document.getElementById("tile-grid").innerHTML = html;
 }
@@ -329,7 +426,7 @@ function renderCart() {
     html += "<li>" +
       '<span class="cart-icon">' + (cartProduct ? productIcon(cartProduct) : "🛒") + "</span>" +
       '<div class="cart-info"><div class="cart-name">' + escapeHtml(item.name) + "</div>" +
-      '<div class="cart-sub">' + peso(item.price) + " each</div></div>" +
+      '<div class="cart-sub">' + peso(item.price) + " bawat isa</div></div>" +
       '<div class="stepper">' +
         '<button class="step" data-barcode="' + escapeHtml(item.barcode) + '" data-change="-1" aria-label="One less">&minus;</button>' +
         '<span class="qty">' + item.qty + "</span>" +
@@ -340,15 +437,17 @@ function renderCart() {
   });
 
   if (cart.length === 0) {
-    html = '<li class="empty">No items yet. Tap a product or scan a barcode.</li>';
+    html = '<li class="empty">Wala pa. Tap ang paninda o i-scan ang barcode.</li>';
   }
   document.getElementById("cart-list").innerHTML = html;
 }
 
 function renderCheckoutBar() {
-  document.getElementById("cart-total").textContent = peso(cartTotal());
+  document.getElementById("cart-total").textContent = ownMode ? "🏠 Para samen" : peso(cartTotal());
   document.getElementById("item-count").textContent = cartItemCount();
-  document.getElementById("charge-btn").disabled = cart.length === 0;
+  const button = document.getElementById("charge-btn");
+  button.textContent = ownMode ? "🏠 Kunin" : "💰 Bayad";
+  button.disabled = cart.length === 0;
 }
 
 // Redraw everything on the Sell tab
@@ -359,13 +458,27 @@ function renderSell() {
 }
 
 function renderProducts() {
+  const query = document.getElementById("product-search").value.trim().toLowerCase();
   let html = "";
+  let shown = 0;
 
   products.forEach(function (p) {
+    if (query !== "" && !p.name.toLowerCase().includes(query) && !p.barcode.includes(query)) {
+      return;
+    }
+    shown++;
     const needsRestock = p.stock <= p.reorder;
     const status = needsRestock
       ? '<span class="pill restock">RESTOCK</span>'
       : '<span class="pill ok-status">OK</span>';
+
+    let profitLine = '<div class="product-profit none">walang puhunan</div>';
+    if (typeof p.cost === "number") {
+      const diff = round2(p.price - p.cost);
+      profitLine = diff >= 0
+        ? '<div class="product-profit">Kita ' + peso(diff) + "</div>"
+        : '<div class="product-profit loss">Lugi ' + peso(-diff) + "</div>";
+    }
 
     const colors = tileColors(p);
     html += '<div class="product-row" data-barcode="' + escapeHtml(p.barcode) + '">' +
@@ -373,13 +486,13 @@ function renderProducts() {
       '<div class="product-main"><div class="product-name">' + escapeHtml(p.name) + "</div>" +
       '<div class="product-code">' + escapeHtml(p.barcode) + "</div></div>" +
       '<div class="product-nums"><div>' + peso(p.price) + "</div>" +
-      '<div class="product-stock">Stock: ' + p.stock + "</div></div>" +
+      '<div class="product-stock">Stock: ' + p.stock + "</div>" + profitLine + "</div>" +
       status +
       "</div>";
   });
 
-  if (products.length === 0) {
-    html = '<p class="empty">No products yet. Add one below.</p>';
+  if (shown === 0) {
+    html = '<p class="empty">' + (products.length === 0 ? "Wala pang paninda. Magdagdag sa baba." : "Walang nahanap na paninda.") + "</p>";
   }
   document.getElementById("product-list").innerHTML = html;
 }
@@ -391,25 +504,29 @@ function renderSummary() {
   document.getElementById("today-count").textContent = stats.count;
 }
 
-// Everything that happened today, newest first:
-// product sales, GCash/Maya, utang payments received, and wallet balance changes.
-function todayEvents() {
-  const today = todayText();
+// Everything that happened on one day (like "2026-11-09"), newest first:
+// product sales, GCash/Maya, utang payments received, wallet balance changes, and Para samen.
+function dayEvents(dateString) {
   const events = [];
 
   sales.forEach(function (sale, index) {
-    if (sale.date === today) {
+    if (sale.date === dateString) {
       events.push({ kind: "sale", ts: sale.ts || 0, order: index, data: sale });
     }
   });
   ewalletTx.forEach(function (tx, index) {
-    if (tx.date === today) {
+    if (tx.date === dateString) {
       events.push({ kind: tx.type === "adjust" ? "adjust" : "wallet", ts: tx.ts || 0, order: index, data: tx });
     }
   });
   ledger.forEach(function (entry, index) {
-    if (entry.type === "payment" && entry.date === today) {
+    if (entry.type === "payment" && entry.date === dateString) {
       events.push({ kind: "payment", ts: entry.ts || 0, order: index, data: entry });
+    }
+  });
+  ownUse.forEach(function (entry, index) {
+    if (entry.date === dateString) {
+      events.push({ kind: "own", ts: entry.ts || 0, order: index, data: entry });
     }
   });
 
@@ -420,19 +537,59 @@ function todayEvents() {
   return events;
 }
 
-// Today's numbers.
+function todayEvents() {
+  return dayEvents(todayText());
+}
+
+// The puhunan (cost) of one sold line. Old sales did not remember it,
+// so we use the product's puhunan today. null = we don't know it.
+function itemCost(item) {
+  if (typeof item.cost === "number") {
+    return item.cost;
+  }
+  const product = findProduct(item.barcode);
+  return product && typeof product.cost === "number" ? product.cost : null;
+}
+
+// Kita (profit) of one sale = (price - puhunan) x quantity.
+// "unknown" counts the items that have no puhunan, so they are not in the profit.
+function saleProfit(sale) {
+  let profit = 0;
+  let known = 0;
+  let unknown = 0;
+  sale.items.forEach(function (item) {
+    const cost = itemCost(item);
+    if (cost === null) {
+      unknown += item.qty;
+    } else {
+      profit += (item.price - cost) * item.qty;
+      known += item.qty;
+    }
+  });
+  return { profit: round2(profit), known: known, unknown: unknown };
+}
+
+// The numbers of one day.
 // Total = sales paid in cash + GCash/Maya fees + utang payments received.
 // Sales charged to utang are NOT in the total until the person pays.
-function todayStats() {
-  const stats = { total: 0, count: 0, items: 0, fees: 0, cashIn: 0, cashOut: 0, utangCharged: 0 };
+// Kita (profit) = profit on the products + GCash/Maya fees. Para samen is not in it.
+function dayStats(dateString) {
+  const stats = {
+    total: 0, count: 0, items: 0, fees: 0, cashIn: 0, cashOut: 0, utangCharged: 0,
+    profitItems: 0, profitUtang: 0, noCost: 0, ownItems: 0, ownCost: 0, profit: 0
+  };
 
-  todayEvents().forEach(function (event) {
+  dayEvents(dateString).forEach(function (event) {
     const d = event.data;
     if (event.kind === "sale") {
       stats.count++;
       d.items.forEach(function (item) { stats.items += item.qty; });
+      const sp = saleProfit(d);
+      stats.profitItems += sp.profit;
+      stats.noCost += sp.unknown;
       if (d.utang) {
         stats.utangCharged += d.total;
+        stats.profitUtang += sp.profit;
       } else {
         stats.total += d.total;
       }
@@ -444,13 +601,128 @@ function todayStats() {
     } else if (event.kind === "payment") {
       stats.count++;
       stats.total += d.amount;
+    } else if (event.kind === "own") {
+      d.items.forEach(function (item) {
+        stats.ownItems += item.qty;
+        const cost = itemCost(item);
+        if (cost !== null) { stats.ownCost += cost * item.qty; }
+      });
     }
   });
 
+  stats.profit = stats.profitItems + stats.fees;
   Object.keys(stats).forEach(function (key) {
     stats[key] = round2(stats[key]);
   });
   return stats;
+}
+
+function todayStats() {
+  return dayStats(todayText());
+}
+
+// Notes under the profit boxes (the same words for Today and for the 7 Days page)
+function profitNotes(stats) {
+  let text = "Kita = benta \u2212 puhunan + GCash/Maya fees.";
+  if (stats.profitUtang > 0) {
+    text += " Kasama ang kita sa utang na hindi pa bayad (" + peso(stats.profitUtang) + ").";
+  }
+  if (stats.noCost > 0) {
+    text += " May " + stats.noCost + " item na walang puhunan, kaya wala sa kita. Ilagay ang puhunan sa Paninda tab.";
+  }
+  return text;
+}
+
+function ownNotes(stats) {
+  if (stats.ownItems === 0) {
+    return "";
+  }
+  return "🏠 Para samen: " + stats.ownItems + " item" + (stats.ownItems === 1 ? "" : "s") +
+    (stats.ownCost > 0 ? " (puhunan " + peso(stats.ownCost) + ")" : "") +
+    ". Hindi kasama sa benta at kita.";
+}
+
+// Turn a list of events into the colored transaction cards.
+// showDay = also write the day, like "Mon, Nov 9".
+function txnHtml(events, showDay, emptyText) {
+  let html = "";
+
+  events.forEach(function (event) {
+    const d = event.data;
+    const when = (showDay ? escapeHtml(dayLabel(d.date)) + " &middot; " : "") + escapeHtml(d.time);
+
+    if (event.kind === "sale") {
+      let lines = "";
+      d.items.forEach(function (item) {
+        lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span>" +
+          '<span class="line-amount">' + peso(item.price * item.qty) + "</span></li>";
+      });
+
+      const parts = [];
+      let tag = '<span class="tag sale">SALE</span>';
+      if (d.utang) {
+        tag = '<span class="tag utang">UTANG &middot; ' + escapeHtml(d.utang.name) + "</span>";
+        parts.push("Nasa utang" + (d.utang.takenBy ? " &middot; kumuha: " + escapeHtml(d.utang.takenBy) : ""));
+      } else if (typeof d.cash === "number") {
+        // older sales may not have cash/change saved
+        parts.push("Cash " + peso(d.cash) + " &middot; Sukli " + peso(d.change));
+      }
+      const sp = saleProfit(d);
+      if (sp.known > 0) {
+        parts.push("Kita " + peso(sp.profit));
+      }
+      const pay = parts.length ? '<div class="txn-pay">' + parts.join(" &middot; ") + "</div>" : "";
+
+      html += '<div class="txn ' + (d.utang ? "k-utang" : "k-sale") + '">' +
+        '<div class="txn-head"><span class="txn-time">' + when + tag + "</span>" +
+        '<span class="txn-total">' + peso(d.total) + "</span></div>" +
+        '<ul class="txn-items">' + lines + "</ul>" + pay + "</div>";
+
+    } else if (event.kind === "wallet") {
+      const label = WALLET_NAMES[d.wallet] + " &middot; " + (d.type === "in" ? "Cash in" : "Cash out");
+      const cashText = d.cashDelta >= 0
+        ? "Customer gave " + peso(d.cashDelta)
+        : "Gave customer " + peso(-d.cashDelta);
+      html += '<div class="txn k-' + d.wallet + '">' +
+        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag ' + d.wallet + '">' + label + "</span></span>" +
+        '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
+        '<div class="txn-pay">Fee ' + peso(d.fee) + " &middot; " + cashText + "</div></div>";
+
+    } else if (event.kind === "payment") {
+      html += '<div class="txn k-utang">' +
+        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag utang">BAYAD SA UTANG</span></span>' +
+        '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
+        '<div class="txn-pay">Galing kay ' + escapeHtml(d.name) + "</div></div>";
+
+    } else if (event.kind === "own") {
+      let lines = "";
+      let costTotal = 0;
+      d.items.forEach(function (item) {
+        lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span></li>";
+        const cost = itemCost(item);
+        if (cost !== null) { costTotal += cost * item.qty; }
+      });
+      const note = costTotal > 0
+        ? "Puhunan " + peso(round2(costTotal)) + " &middot; hindi kasama sa kita"
+        : "Hindi kasama sa benta at kita";
+      html += '<div class="txn k-own">' +
+        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag own">🏠 PARA SAMEN</span></span>' +
+        '<span class="txn-total">🏠</span></div>' +
+        '<ul class="txn-items">' + lines + "</ul>" +
+        '<div class="txn-pay">' + note + "</div></div>";
+
+    } else if (event.kind === "adjust") {
+      html += '<div class="txn muted k-' + d.wallet + '">' +
+        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag">' + WALLET_NAMES[d.wallet] + " balance changed</span></span>" +
+        '<span class="txn-pay">' + (d.walletDelta >= 0 ? "+" : "&minus;") + peso(Math.abs(d.walletDelta)) + "</span></div>" +
+        '<div class="txn-pay">New balance ' + peso(d.balanceAfter) + "</div></div>";
+    }
+  });
+
+  if (html === "") {
+    html = '<p class="empty">' + emptyText + "</p>";
+  }
+  return html;
 }
 
 // The Today tab
@@ -464,66 +736,73 @@ function renderToday() {
   document.getElementById("stat-cashin").textContent = pesoShort(stats.cashIn);
   document.getElementById("stat-cashout").textContent = pesoShort(stats.cashOut);
   document.getElementById("stat-hint").textContent =
-    "Total = cash sales + GCash/Maya fees + utang payments received." +
-    (stats.utangCharged > 0 ? " Charged to utang today (" + peso(stats.utangCharged) + ") is not in the total." : "");
+    "Total = cash sales + GCash/Maya fees + bayad sa utang." +
+    (stats.utangCharged > 0 ? " Nasa utang ngayon (" + peso(stats.utangCharged) + ") ay wala pa sa total." : "");
 
-  let html = "";
+  document.getElementById("stat-profit").textContent = peso(stats.profit);
+  document.getElementById("stat-profit-items").textContent = peso(stats.profitItems);
+  document.getElementById("profit-hint").textContent = profitNotes(stats);
+  document.getElementById("own-hint").textContent = ownNotes(stats);
 
-  todayEvents().forEach(function (event) {
-    const d = event.data;
-
-    if (event.kind === "sale") {
-      let lines = "";
-      d.items.forEach(function (item) {
-        lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span>" +
-          '<span class="line-amount">' + peso(item.price * item.qty) + "</span></li>";
-      });
-
-      let pay = "";
-      let tag = '<span class="tag sale">SALE</span>';
-      if (d.utang) {
-        tag = '<span class="tag utang">UTANG &middot; ' + escapeHtml(d.utang.name) + "</span>";
-        pay = '<div class="txn-pay">Charged to utang' +
-          (d.utang.takenBy ? " &middot; taken by " + escapeHtml(d.utang.takenBy) : "") + "</div>";
-      } else if (typeof d.cash === "number") {
-        // older sales may not have cash/change saved
-        pay = '<div class="txn-pay">Cash ' + peso(d.cash) + " &middot; Change " + peso(d.change) + "</div>";
-      }
-
-      html += '<div class="txn ' + (d.utang ? "k-utang" : "k-sale") + '">' +
-        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + tag + "</span>" +
-        '<span class="txn-total">' + peso(d.total) + "</span></div>" +
-        '<ul class="txn-items">' + lines + "</ul>" + pay + "</div>";
-
-    } else if (event.kind === "wallet") {
-      const label = WALLET_NAMES[d.wallet] + " &middot; " + (d.type === "in" ? "Cash in" : "Cash out");
-      const cashText = d.cashDelta >= 0
-        ? "Customer gave " + peso(d.cashDelta)
-        : "Gave customer " + peso(-d.cashDelta);
-      html += '<div class="txn k-' + d.wallet + '">' +
-        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag ' + d.wallet + '">' + label + "</span></span>" +
-        '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
-        '<div class="txn-pay">Fee ' + peso(d.fee) + " &middot; " + cashText + "</div></div>";
-
-    } else if (event.kind === "payment") {
-      html += '<div class="txn k-utang">' +
-        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag utang">UTANG PAYMENT</span></span>' +
-        '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
-        '<div class="txn-pay">From ' + escapeHtml(d.name) + "</div></div>";
-
-    } else if (event.kind === "adjust") {
-      html += '<div class="txn muted k-' + d.wallet + '">' +
-        '<div class="txn-head"><span class="txn-time">' + escapeHtml(d.time) + '<span class="tag">' + WALLET_NAMES[d.wallet] + " balance changed</span></span>" +
-        '<span class="txn-pay">' + (d.walletDelta >= 0 ? "+" : "&minus;") + peso(Math.abs(d.walletDelta)) + "</span></div>" +
-        '<div class="txn-pay">New balance ' + peso(d.balanceAfter) + "</div></div>";
-    }
-  });
-
-  if (html === "") {
-    html = '<p class="empty">Nothing yet today.</p>';
-  }
-  document.getElementById("today-list").innerHTML = html;
+  document.getElementById("today-list").innerHTML = txnHtml(todayEvents(), false, "Wala pa ngayon.");
 }
+
+// ----- the 7 Days tab: pick a day, see that day's transactions -----
+let weekDate = todayText();
+
+// the last 7 days, oldest first, today last
+function lastSevenDates() {
+  const now = new Date();
+  const dates = [];
+  for (let i = 6; i >= 0; i--) {
+    dates.push(dateText(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)));
+  }
+  return dates;
+}
+
+function renderWeek() {
+  const dates = lastSevenDates();
+  const today = todayText();
+  if (dates.indexOf(weekDate) < 0) {
+    weekDate = today;                 // the page was left open overnight
+  }
+
+  let chips = "";
+  let sevenTotal = 0;
+  let sevenProfit = 0;
+  dates.forEach(function (date) {
+    const stats = dayStats(date);
+    sevenTotal += stats.total;
+    sevenProfit += stats.profit;
+    const weekday = parseDate(date).toLocaleDateString("en-US", { weekday: "short" });
+    chips += '<button type="button" class="day-chip' + (date === weekDate ? " active" : "") + (date === today ? " is-today" : "") +
+      '" data-date="' + date + '" aria-label="' + escapeHtml(dayLabelLong(date)) + '">' +
+      '<span class="day-name">' + weekday + "</span>" +
+      '<span class="day-num">' + parseDate(date).getDate() + "</span>" +
+      '<span class="day-sum">' + (stats.total > 0 ? pesoCompact(stats.total) : "&ndash;") + "</span></button>";
+  });
+  document.getElementById("day-strip").innerHTML = chips;
+  document.getElementById("wk7-total").textContent = peso(round2(sevenTotal));
+  document.getElementById("wk7-profit").textContent = peso(round2(sevenProfit));
+
+  const stats = dayStats(weekDate);
+  document.getElementById("wk-title").textContent = dayLabelLong(weekDate) + (weekDate === today ? " (Ngayon)" : "");
+  document.getElementById("wk-total").textContent = peso(stats.total);
+  document.getElementById("wk-count").textContent = stats.count;
+  document.getElementById("wk-items").textContent = stats.items;
+  document.getElementById("wk-profit").textContent = peso(stats.profit);
+  document.getElementById("wk-fees").textContent = pesoShort(stats.fees);
+  document.getElementById("wk-hint").textContent = (profitNotes(stats) + " " + ownNotes(stats)).trim();
+  document.getElementById("week-list").innerHTML = txnHtml(dayEvents(weekDate), true, "Walang transactions sa araw na ito.");
+}
+
+document.getElementById("day-strip").addEventListener("click", function (event) {
+  const chip = event.target.closest(".day-chip");
+  if (chip) {
+    weekDate = chip.getAttribute("data-date");
+    renderWeek();
+  }
+});
 
 function renderAll() {
   renderSell();
@@ -532,13 +811,14 @@ function renderAll() {
   renderUtang();
   renderSummary();
   renderToday();
+  renderWeek();
 }
 
 
 /* ---------- 7. TABS ---------- */
 
 function showView(name) {
-  const views = ["sell", "today", "utang", "products"];
+  const views = ["sell", "today", "week", "utang", "products"];
   views.forEach(function (v) {
     document.getElementById("view-" + v).hidden = name !== v;
     document.getElementById("tab-" + v).classList.toggle("active", name === v);
@@ -549,6 +829,9 @@ function showView(name) {
   if (name === "today") {
     renderToday();
     renderSummary();
+  }
+  if (name === "week") {
+    renderWeek();
   }
   if (name === "utang") {
     renderUtang();
@@ -602,21 +885,38 @@ function updateChange() {
   const confirmButton = document.getElementById("pay-confirm");
 
   if (isNaN(cash)) {
-    label.textContent = "Change";
+    label.textContent = "Sukli";
     amount.textContent = peso(0);
     confirmButton.disabled = false;       // allowed: sale without typing the cash
   } else if (cash < total) {
-    label.textContent = "Still needed";
+    label.textContent = "Kulang pa";
     amount.textContent = peso(total - cash);
     confirmButton.disabled = true;
   } else {
-    label.textContent = "Change";
+    label.textContent = "Sukli";
     amount.textContent = peso(cash - total);
     confirmButton.disabled = false;
   }
 }
 
-document.getElementById("charge-btn").addEventListener("click", openPay);
+// The big button: Bayad normally, or Kunin when the Para samen switch is ON
+document.getElementById("charge-btn").addEventListener("click", function () {
+  if (ownMode) {
+    takeForUs();
+  } else {
+    openPay();
+  }
+});
+document.getElementById("own-toggle").addEventListener("change", function () {
+  setOwnMode(this.checked);
+});
+document.getElementById("best-toggle").addEventListener("change", function () {
+  settings.bestOnly = this.checked;
+  saveData();
+  renderSwitches();
+  renderTiles();
+});
+document.getElementById("product-search").addEventListener("input", renderProducts);
 document.getElementById("pay-cancel").addEventListener("click", closePay);
 document.getElementById("cash-input").addEventListener("input", updateChange);
 
@@ -740,31 +1040,48 @@ function setScannerStatus(text) {
   document.getElementById("scanner-status").textContent = text;
 }
 
+// The barcode kinds found on store products
+const SCAN_FORMAT_NAMES = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"];
+
+function scanFormats() {
+  return [
+    Html5QrcodeSupportedFormats.EAN_13,
+    Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.UPC_A,
+    Html5QrcodeSupportedFormats.UPC_E,
+    Html5QrcodeSupportedFormats.CODE_128,
+    Html5QrcodeSupportedFormats.CODE_39
+  ];
+}
+
 async function openScanner(mode) {
   scannerMode = mode;
   lastScanCode = "";
   unlockAudio();
   document.getElementById("scanner-overlay").hidden = false;
-  setScannerStatus("Starting camera...");
+  setScannerStatus("Binubuksan ang camera...");
 
   try {
     await loadScannerLibrary();
   } catch (error) {
-    setScannerStatus("Couldn't load the scanner. Check your internet connection, or type the barcode instead.");
+    setScannerStatus("Hindi ma-load ang scanner. Check ang internet, o i-type ang barcode. Pwede pa rin ang litrato sa baba.");
     return;
   }
+  await startLive();
+}
 
+// Start the live camera. Safe to call twice.
+// If this browser has the built-in BarcodeDetector, the library uses it (faster and better).
+async function startLive() {
+  if (scanner || document.getElementById("scanner-overlay").hidden || !window.Html5Qrcode) {
+    return;
+  }
   try {
     scanner = new Html5Qrcode("reader", {
       verbose: false,
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39
-      ]
+      formatsToSupport: scanFormats(),
+      useBarCodeDetectorIfSupported: true,
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true }
     });
     await scanner.start(
       { facingMode: "environment" },                     // the back camera
@@ -777,28 +1094,35 @@ async function openScanner(mode) {
       onScanSuccess,
       function () {}                                      // called on every frame with no barcode: ignore
     );
-    setScannerStatus(mode === "sell" ? "Point the camera at a barcode. It keeps scanning until you tap Done." : "Point the camera at the barcode.");
+    setScannerStatus(scannerMode === "sell"
+      ? "Itutok sa barcode. Tuloy-tuloy ang scan hanggang pindutin ang Done."
+      : "Itutok sa barcode.");
   } catch (error) {
     scanner = null;
-    setScannerStatus("Couldn't open the camera. Allow camera access for this page (iPhone: Settings > Safari > Camera), then try again.");
+    setScannerStatus("Hindi mabuksan ang camera. Payagan ang camera para sa page na ito (iPhone: Settings > Safari > Camera). Pwede pa rin ang litrato sa baba.");
   }
 }
 
-async function closeScanner() {
+async function stopLive() {
   const active = scanner;
   scanner = null;
   if (active) {
     try { await active.stop(); } catch (error) {}
     try { active.clear(); } catch (error) {}
   }
+}
+
+async function closeScanner() {
+  photoPending = false;
+  await stopLive();
   document.getElementById("scanner-overlay").hidden = true;
 }
 
-// Called by the library each time it reads a barcode
-function onScanSuccess(code) {
+// Called by the library each time it reads a barcode. force = skip the "same barcode again" check.
+function onScanSuccess(code, force) {
   // The camera sees the same barcode many times a second. Ignore repeats within 2 seconds.
   const now = Date.now();
-  if (code === lastScanCode && now - lastScanTime < 2000) {
+  if (force !== true && code === lastScanCode && now - lastScanTime < 2000) {
     return;
   }
   lastScanCode = code;
@@ -818,6 +1142,83 @@ function onScanSuccess(code) {
   setScannerStatus(result.text);
 }
 
+/* ----- Backup way: take a photo of the barcode with the phone's normal camera -----
+   Useful when the live camera view won't start or won't focus.
+   The photo is read by the browser's BarcodeDetector if it has one, otherwise by the library. */
+let photoPending = false;
+
+async function decodePhoto(file) {
+  // 1) the browser's own barcode reader (Chrome on Android, newer Safari)
+  if ("BarcodeDetector" in window) {
+    try {
+      const detector = new BarcodeDetector({ formats: SCAN_FORMAT_NAMES });
+      const bitmap = await createImageBitmap(file);
+      const found = await detector.detect(bitmap);
+      if (found.length > 0 && found[0].rawValue) {
+        return found[0].rawValue;
+      }
+    } catch (error) {}
+  }
+  // 2) the library
+  await loadScannerLibrary();
+  const reader = new Html5Qrcode("photo-holder", { verbose: false, formatsToSupport: scanFormats() });
+  try {
+    return await reader.scanFile(file, false);
+  } finally {
+    try { reader.clear(); } catch (error) {}
+  }
+}
+
+document.getElementById("scanner-photo-btn").addEventListener("click", function () {
+  unlockAudio();
+  photoPending = true;
+  document.getElementById("scanner-photo").click();   // must happen right at the tap
+  setScannerStatus("Kunan ng litrato ang barcode. Lapit at kita ang buong barcode.");
+  stopLive();
+});
+
+document.getElementById("scanner-photo").addEventListener("change", async function () {
+  const file = this.files[0];
+  this.value = "";
+  photoPending = false;
+  if (!file) {
+    await startLive();
+    return;
+  }
+
+  setScannerStatus("Binabasa ang litrato...");
+  let code = "";
+  try {
+    code = await decodePhoto(file);
+  } catch (error) {
+    code = "";
+  }
+
+  if (!code) {
+    beep(false);
+    if (scannerMode === "sell") { await startLive(); }
+    setScannerStatus("Hindi nabasa ang barcode. Subukan ulit: lapitan, may ilaw, at kita ang buong barcode.");
+    return;
+  }
+  onScanSuccess(String(code).trim(), true);
+  if (scannerMode === "sell") {
+    const text = document.getElementById("scanner-status").textContent;
+    await startLive();
+    setScannerStatus(text);
+  }
+});
+
+// If the photo screen is closed without taking a photo, bring the live camera back.
+window.addEventListener("focus", function () {
+  if (!photoPending) { return; }
+  setTimeout(function () {
+    if (photoPending) {
+      photoPending = false;
+      startLive();
+    }
+  }, 1500);
+});
+
 document.getElementById("camera-btn").addEventListener("click", function () { openScanner("sell"); });
 document.getElementById("fill-camera-btn").addEventListener("click", function () { openScanner("fill"); });
 document.getElementById("scanner-close").addEventListener("click", closeScanner);
@@ -833,7 +1234,7 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
   const name = document.getElementById("new-name").value.trim();
 
   if (findProduct(barcode)) {
-    message.textContent = "That barcode is already in your product list.";
+    message.textContent = "Nasa listahan na ang barcode na iyan.";
     return;
   }
 
@@ -850,6 +1251,10 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
     stock: parseInt(document.getElementById("new-stock").value, 10),
     reorder: reorder
   };
+  const cost = parseFloat(document.getElementById("new-cost").value);
+  if (!isNaN(cost) && cost >= 0) {
+    newProduct.cost = cost;               // puhunan: what we paid for it
+  }
   if (newIcon) {
     newProduct.icon = newIcon;
   }
@@ -860,7 +1265,38 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
   this.reset();
   newIcon = "";
   setPickedIcon("new-icons", "");
-  message.textContent = "Added: " + name;
+  showProfitLine("new-cost", "new-price", "new-profit");
+  message.textContent = "Naidagdag: " + name;
+});
+
+
+// The green "Kita ₱3.00 bawat isa" line under the Puhunan and Presyo boxes
+function showProfitLine(costId, priceId, lineId) {
+  const cost = parseFloat(document.getElementById(costId).value);
+  const price = parseFloat(document.getElementById(priceId).value);
+  const line = document.getElementById(lineId);
+  line.className = "profit-line";
+  if (isNaN(cost) || isNaN(price)) {
+    line.textContent = "";
+    return;
+  }
+  const diff = round2(price - cost);
+  if (diff < 0) {
+    line.classList.add("loss");
+    line.textContent = "⚠️ Lugi: " + peso(-diff) + " bawat isa";
+  } else {
+    line.textContent = "💚 Kita: " + peso(diff) + " bawat isa";
+  }
+}
+["new-cost", "new-price"].forEach(function (id) {
+  document.getElementById(id).addEventListener("input", function () {
+    showProfitLine("new-cost", "new-price", "new-profit");
+  });
+});
+["edit-cost", "edit-price"].forEach(function (id) {
+  document.getElementById(id).addEventListener("input", function () {
+    showProfitLine("edit-cost", "edit-price", "edit-profit");
+  });
 });
 
 
@@ -880,6 +1316,8 @@ function openEdit(barcode) {
   document.getElementById("edit-name").value = product.name;
   document.getElementById("edit-barcode").value = product.barcode;
   document.getElementById("edit-price").value = product.price;
+  document.getElementById("edit-cost").value = typeof product.cost === "number" ? product.cost : "";
+  showProfitLine("edit-cost", "edit-price", "edit-profit");
   document.getElementById("edit-stock").value = product.stock;
   document.getElementById("edit-reorder").value = product.reorder;
   document.getElementById("edit-message").textContent = "";
@@ -904,7 +1342,15 @@ function saveEdit() {
   // The new barcode must not belong to a different product.
   const other = findProduct(newBarcode);
   if (other && other !== product) {
-    message.textContent = "Another product already uses that barcode: " + other.name;
+    message.textContent = "Gamit na ng ibang paninda ang barcode na iyan: " + other.name;
+    return;
+  }
+
+  // puhunan: empty = not known yet
+  const costText = document.getElementById("edit-cost").value.trim();
+  const newCost = parseFloat(costText);
+  if (costText !== "" && (isNaN(newCost) || newCost < 0)) {
+    message.textContent = "Mali ang puhunan. Mag-type ng 0 o higit pa.";
     return;
   }
 
@@ -912,6 +1358,11 @@ function saveEdit() {
   product.name = document.getElementById("edit-name").value.trim();
   product.barcode = newBarcode;
   product.price = parseFloat(document.getElementById("edit-price").value);
+  if (costText === "") {
+    delete product.cost;
+  } else {
+    product.cost = newCost;
+  }
   product.stock = parseInt(document.getElementById("edit-stock").value, 10);
   product.reorder = parseInt(document.getElementById("edit-reorder").value, 10);
   if (editIcon) {
@@ -943,7 +1394,7 @@ function deleteProduct() {
     closeEdit();
     return;
   }
-  if (!confirm("Delete " + product.name + "?\n\nYour past sales records are kept.")) {
+  if (!confirm("Burahin ang " + product.name + "?\n\nMananatili ang mga lumang benta.")) {
     return;
   }
   products = products.filter(function (p) { return p !== product; });
@@ -970,9 +1421,10 @@ document.getElementById("edit-scan-btn").addEventListener("click", function () {
 
 // Delete everything (the sample products too) and start with an empty list
 document.getElementById("empty-btn").addEventListener("click", function () {
-  if (confirm("Delete ALL products and sales and start with an empty list?\n\nGCash/Maya and utang records are kept.\nSave a backup first if you want to keep anything.")) {
+  if (confirm("Burahin LAHAT ng paninda at benta at magsimula sa walang laman?\n\nMananatili ang GCash/Maya at utang.\nMag-save muna ng backup kung kailangan.")) {
     products = [];
     sales = [];
+    ownUse = [];
     cart = [];
     saveData();
     renderAll();
@@ -1059,7 +1511,7 @@ function openWallet(name) {
   const numbers = ewallet[name].numbers.trim();
   byId("wallet-numbers").textContent = numbers
     ? "Number: " + numbers
-    : "No number saved yet. Add it in the Products tab, under GCash & Maya settings.";
+    : "Wala pang number. Ilagay sa Paninda tab, sa GCash & Maya settings.";
   byId("wallet-amount").value = "";
   byId("wallet-fee").value = "";
   setWalletMode("in");
@@ -1597,7 +2049,9 @@ function makeBackup() {
     sales: sales,
     ewallet: ewallet,
     ewalletTx: ewalletTx,
-    ledger: ledger
+    ledger: ledger,
+    ownUse: ownUse,
+    settings: settings
   };
 }
 
@@ -1613,7 +2067,8 @@ function checkBackup(data) {
   const productsOk = data.products.every(function (p) {
     return typeof p.barcode === "string" && typeof p.name === "string" &&
            typeof p.price === "number" && typeof p.stock === "number" &&
-           typeof p.reorder === "number";
+           typeof p.reorder === "number" &&
+           (p.cost === undefined || typeof p.cost === "number");
   });
   if (!productsOk) {
     return "Some products in the backup file are damaged.";
@@ -1624,6 +2079,9 @@ function checkBackup(data) {
   }
   if (data.ledger !== undefined && !Array.isArray(data.ledger)) {
     return "The utang records in the backup file are damaged.";
+  }
+  if (data.ownUse !== undefined && !Array.isArray(data.ownUse)) {
+    return "The Para samen records in the backup file are damaged.";
   }
   if (data.ewallet !== undefined && (typeof data.ewallet !== "object" || data.ewallet === null)) {
     return "The GCash/Maya settings in the backup file are damaged.";
@@ -1705,7 +2163,13 @@ function restoreBackup(text) {
   if (data.ewallet !== undefined) { ewallet = data.ewallet; normalizeEwallet(); }
   if (data.ewalletTx !== undefined) { ewalletTx = data.ewalletTx; }
   if (data.ledger !== undefined) { ledger = data.ledger; }
+  if (data.ownUse !== undefined) { ownUse = data.ownUse; }
+  if (data.settings && typeof data.settings === "object") {
+    settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
+  }
   cart = [];
+  setOwnMode(false);
+  renderSwitches();
   saveData();
   renderAll();
   fillWalletSettings();
@@ -1731,9 +2195,10 @@ document.getElementById("restore-file").addEventListener("change", function () {
 
 // Reset everything back to the sample data (asks first)
 document.getElementById("reset-btn").addEventListener("click", function () {
-  if (confirm("Delete all your products and sales and go back to the sample data?\n\nGCash/Maya and utang records are kept.")) {
+  if (confirm("Burahin lahat ng paninda at benta at bumalik sa sample data?\n\nMananatili ang GCash/Maya at utang.")) {
     products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));   // a fresh copy of the samples
     sales = [];
+    ownUse = [];
     cart = [];
     saveData();
     renderAll();
@@ -1744,6 +2209,7 @@ document.getElementById("reset-btn").addEventListener("click", function () {
 /* ---------- 13. RUNS WHEN THE PAGE OPENS ---------- */
 
 buildQuickCash();
+renderSwitches();
 renderAll();
 showBackupStatus();
 focusBarcodeBox();
