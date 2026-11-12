@@ -26,9 +26,9 @@ const OWN_KEY = "pos_own";                // items taken "para samen" (for ourse
 const SETTINGS_KEY = "pos_settings";      // on/off switches
 
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
-const DEFAULT_SETTINGS = { bestOnly: true, voice: true, storeName: "" };
+const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "" };
 const BEST_COUNT = 10;
-const APP_VERSION = "v10 - Nov 12";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v12 - Nov 13";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // Starting values for GCash / Maya. Your numbers are typed in the app (Products tab),
 // NOT written here, because this code is public on GitHub.
@@ -2048,7 +2048,24 @@ byId("wallet-quick").addEventListener("click", function (event) {
   byId("wallet-amount").value = button.getAttribute("data-amount");
   feeEdited = false;
   updateWalletSheet();
+  speakWallet();                       // say it right away, like the Bayad screen
 });
+
+// Says the GCash/Maya deal out loud: "Cash in, 500 pesos. Fee, 15 pesos. Collect, 515 pesos."
+function speakWallet() {
+  const amount = round2(parseFloat(byId("wallet-amount").value));
+  const fee = round2(parseFloat(byId("wallet-fee").value));
+  if (!(amount > 0) || isNaN(fee) || fee < 0) { return; }
+  if (walletMode === "in" && amount > ewallet[walletInUse].balance) { return; }
+  if (walletMode === "out" && ewallet.cashOutFee === "deduct" && fee > amount) { return; }
+  const effect = walletEffects(walletMode, amount, fee);
+  speakParts([
+    [walletMode === "in" ? "Cash in" : "Cash out", amount],
+    ["Fee", fee],
+    [effect.cash >= 0 ? "Singil" : "Ibigay", Math.abs(effect.cash)]
+  ]);
+}
+byId("wallet-speak").addEventListener("click", speakWallet);
 
 
 /* ---------- 12. BACKUP AND RESTORE ----------
@@ -2349,8 +2366,8 @@ document.getElementById("receipt-print").addEventListener("click", function () {
     return '<div class="' + (i === 0 ? "store" : "") + '">' + (escapeHtml(line) || "&nbsp;") + "</div>";
   }).join("");
   const page = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Resibo</title><style>" +
-    "@page { margin: 8mm; }" +
-    "body { margin: 0; background: #fff; color: #000; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.45; }" +
+    "@page { margin: 0; }" +
+    "body { margin: 0; padding: 10mm; background: #fff; color: #000; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.45; }" +
     ".receipt { width: 72mm; max-width: 100%; white-space: pre-wrap; }" +
     ".store { text-align: center; font-weight: bold; font-size: 16px; }" +
     "</style></head><body><div class=\"receipt\">" + body + "</div></body></html>";
@@ -2451,7 +2468,7 @@ function filipinoVoice() {
 }
 
 // parts = a list like [["Natanggap", 500], ["Sukli", 350]]. Uses a Filipino voice if the phone has one, otherwise English.
-const ENGLISH_LABELS = { "Total": "Total", "Natanggap": "Received", "Sukli": "Change", "Kulang pa": "Short by" };
+const ENGLISH_LABELS = { "Total": "Total", "Natanggap": "Received", "Sukli": "Change", "Kulang pa": "Short by", "Singil": "Collect", "Ibigay": "Give", "Fee": "Fee", "Cash in": "Cash in", "Cash out": "Cash out" };
 
 function speakParts(parts, force) {
   if ((settings.voice === false && !force) || !("speechSynthesis" in window)) { return; }
@@ -2460,11 +2477,11 @@ function speakParts(parts, force) {
     const text = parts.map(function (part) {
       return voice
         ? part[0] + ", " + tagalogPeso(part[1]) + "."
-        : ENGLISH_LABELS[part[0]] + ", " + englishPeso(part[1]) + ".";
+        : (ENGLISH_LABELS[part[0]] || part[0]) + ", " + englishPeso(part[1]) + ".";
     }).join(" ");
     const talk = new SpeechSynthesisUtterance(text);
     if (voice) { talk.voice = voice; talk.lang = voice.lang; } else { talk.lang = "en-US"; }
-    talk.rate = 0.9;
+    talk.rate = settings.voiceRate || 1.25;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(talk);
   } catch (error) {}
@@ -2498,6 +2515,7 @@ document.getElementById("quick-cash").addEventListener("click", function (event)
 function renderVoiceSettings() {
   document.getElementById("set-store-name").value = settings.storeName || "";
   document.getElementById("voice-toggle").checked = settings.voice !== false;
+  document.getElementById("voice-speed").value = String(settings.voiceRate || 1.25);
   document.getElementById("voice-state").textContent = settings.voice !== false ? "ON" : "OFF";
   const info = document.getElementById("voice-info");
   if (!("speechSynthesis" in window)) {
@@ -2511,6 +2529,11 @@ function renderVoiceSettings() {
 document.getElementById("set-store-name").addEventListener("input", function () {
   settings.storeName = this.value.trim();
   saveData();
+});
+document.getElementById("voice-speed").addEventListener("change", function () {
+  settings.voiceRate = parseFloat(this.value);
+  saveData();
+  speakParts([["Natanggap", 200], ["Sukli", 49.5]], true);     // play a sample at the new speed
 });
 document.getElementById("voice-toggle").addEventListener("change", function () {
   settings.voice = this.checked;
