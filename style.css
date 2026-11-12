@@ -718,3 +718,9 @@ select {
 .scanner-box .secondary { margin-top: 12px; }
 .scanner-box .primary.wide { margin-top: 12px; }
 .product-profit.loss { color: var(--danger); font-weight: 700; }
+
+.front-row { margin: 14px 0; }
+
+.zoom-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: #f4f2ee; font-weight: 800; }
+.zoom-row input { flex: 1; min-width: 0; height: 32px; }
+.zoom-row[hidden] { display: none; }

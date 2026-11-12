@@ -384,7 +384,10 @@ function renderTiles() {
   // Top 10 switch ON: show only the best sellers. Searching always looks through everything.
   const note = document.getElementById("best-note");
   if (settings.bestOnly && query === "") {
-    list = list.slice(0, BEST_COUNT);
+    // Products with the "front page" switch ON always show. Best sellers fill the rest up to 10.
+    const pinned = list.filter(function (p) { return p.front; });
+    const others = list.filter(function (p) { return !p.front; });
+    list = pinned.concat(others.slice(0, Math.max(0, BEST_COUNT - pinned.length)));
     note.textContent = products.length > list.length
       ? "Ipinapakita ang " + list.length + " sa " + products.length + " na paninda. Gamitin ang search para sa iba."
       : "Lahat ng " + products.length + " paninda ay nakikita.";
@@ -483,7 +486,7 @@ function renderProducts() {
     const colors = tileColors(p);
     html += '<div class="product-row" data-barcode="' + escapeHtml(p.barcode) + '">' +
       '<span class="prod-icon" style="background:' + colors[0] + ";border-color:" + colors[1] + '">' + productIcon(p) + "</span>" +
-      '<div class="product-main"><div class="product-name">' + escapeHtml(p.name) + "</div>" +
+      '<div class="product-main"><div class="product-name">' + (p.front ? "⭐ " : "") + escapeHtml(p.name) + "</div>" +
       '<div class="product-code">' + escapeHtml(p.barcode) + "</div></div>" +
       '<div class="product-nums"><div>' + peso(p.price) + "</div>" +
       '<div class="product-stock">Stock: ' + p.stock + "</div>" + profitLine + "</div>" +
@@ -1083,25 +1086,78 @@ async function startLive() {
       useBarCodeDetectorIfSupported: true,
       experimentalFeatures: { useBarCodeDetectorIfSupported: true }
     });
-    await scanner.start(
-      { facingMode: "environment" },                     // the back camera
-      {
-        fps: 10,
-        qrbox: function (width, height) {                // the scanning box
-          return { width: Math.floor(width * 0.85), height: Math.floor(Math.min(height * 0.5, 160)) };
-        }
-      },
-      onScanSuccess,
-      function () {}                                      // called on every frame with no barcode: ignore
-    );
+    const scanBox = function (width, height) {
+      // read almost the whole picture, not just a small box in the middle
+      return { width: Math.floor(width * 0.94), height: Math.floor(Math.min(height * 0.75, 300)) };
+    };
+    try {
+      // HD video (the default is a blurry 640x480, so the barcode had to be huge)
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 15,
+          qrbox: scanBox,
+          videoConstraints: {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        },
+        onScanSuccess,
+        function () {}
+      );
+    } catch (hdError) {
+      // some phones refuse the HD settings: try the plain way
+      try { await scanner.stop(); } catch (e) {}
+      scanner = new Html5Qrcode("reader", {
+        verbose: false,
+        formatsToSupport: scanFormats(),
+        useBarCodeDetectorIfSupported: true
+      });
+      await scanner.start({ facingMode: "environment" }, { fps: 15, qrbox: scanBox }, onScanSuccess, function () {});
+    }
+    // ask for continuous auto-focus (ignored by phones that can't)
+    try { scanner.applyVideoConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (e) {}
+    setupZoom();
     setScannerStatus(scannerMode === "sell"
-      ? "Itutok sa barcode. Tuloy-tuloy ang scan hanggang pindutin ang Done."
+      ? "Itutok sa barcode, mga 15-20 cm ang layo, nakahiga ang barcode. Tuloy-tuloy ang scan hanggang pindutin ang Done."
       : "Itutok sa barcode.");
   } catch (error) {
     scanner = null;
     setScannerStatus("Hindi mabuksan ang camera. Payagan ang camera para sa page na ito (iPhone: Settings > Safari > Camera). Pwede pa rin ang litrato sa baba.");
   }
 }
+
+// Zoom slider. Only some phones allow camera zoom from a web page (many Androids do, iPhone Safari does not).
+function setupZoom() {
+  const row = document.getElementById("zoom-row");
+  const slider = document.getElementById("zoom-slider");
+  row.hidden = true;
+  try {
+    const caps = scanner.getRunningTrackCapabilities();
+    if (!caps || !caps.zoom || !(caps.zoom.max > caps.zoom.min)) {
+      return;
+    }
+    slider.min = caps.zoom.min;
+    slider.max = Math.min(caps.zoom.max, 5);
+    slider.step = caps.zoom.step || 0.1;
+    const start = Math.min(Math.max(1.5, caps.zoom.min), slider.max);   // a little zoom helps with small barcodes
+    slider.value = start;
+    applyZoom(start);
+    row.hidden = false;
+  } catch (error) {}
+}
+
+function applyZoom(value) {
+  document.getElementById("zoom-value").textContent = (Math.round(value * 10) / 10) + "x";
+  try {
+    scanner.applyVideoConstraints({ advanced: [{ zoom: parseFloat(value) }] });
+  } catch (error) {}
+}
+
+document.getElementById("zoom-slider").addEventListener("input", function () {
+  if (scanner) { applyZoom(this.value); }
+});
 
 async function stopLive() {
   const active = scanner;
@@ -1258,6 +1314,9 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
   if (newIcon) {
     newProduct.icon = newIcon;
   }
+  if (document.getElementById("new-front").checked) {
+    newProduct.front = true;              // always on the front page
+  }
   products.push(newProduct);
 
   saveData();
@@ -1266,9 +1325,19 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
   newIcon = "";
   setPickedIcon("new-icons", "");
   showProfitLine("new-cost", "new-price", "new-profit");
+  showFrontState("new-front");
   message.textContent = "Naidagdag: " + name;
 });
 
+
+// The ON / OFF word next to a "front page" switch
+function showFrontState(id) {
+  const box = document.getElementById(id);
+  box.parentNode.querySelector(".switch-state").textContent = box.checked ? "ON" : "OFF";
+}
+["new-front", "edit-front"].forEach(function (id) {
+  document.getElementById(id).addEventListener("change", function () { showFrontState(id); });
+});
 
 // The green "Kita ₱3.00 bawat isa" line under the Puhunan and Presyo boxes
 function showProfitLine(costId, priceId, lineId) {
@@ -1320,6 +1389,8 @@ function openEdit(barcode) {
   showProfitLine("edit-cost", "edit-price", "edit-profit");
   document.getElementById("edit-stock").value = product.stock;
   document.getElementById("edit-reorder").value = product.reorder;
+  document.getElementById("edit-front").checked = !!product.front;
+  showFrontState("edit-front");
   document.getElementById("edit-message").textContent = "";
   document.getElementById("edit-overlay").hidden = false;
 }
@@ -1365,6 +1436,11 @@ function saveEdit() {
   }
   product.stock = parseInt(document.getElementById("edit-stock").value, 10);
   product.reorder = parseInt(document.getElementById("edit-reorder").value, 10);
+  if (document.getElementById("edit-front").checked) {
+    product.front = true;
+  } else {
+    delete product.front;
+  }
   if (editIcon) {
     product.icon = editIcon;
   } else {
@@ -1754,7 +1830,7 @@ function renderUtang() {
       : '<span class="pill ok-status">PAID</span>';
     html += '<div class="product-row debt-row" data-key="' + escapeHtml(p.key) + '">' +
       avatarHtml(p.name) +
-      '<div class="product-main"><div class="product-name">' + escapeHtml(p.name) + "</div>" +
+      '<div class="product-main"><div class="product-name">' + (p.front ? "⭐ " : "") + escapeHtml(p.name) + "</div>" +
       '<div class="product-code">Last: ' + escapeHtml(lastEntry.date) + "</div></div>" +
       status + "</div>";
   });

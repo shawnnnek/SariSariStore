@@ -205,6 +205,18 @@
         <label>Picture (pumili, o hayaan na lang)</label>
         <div id="new-icons" class="icon-picker"></div>
 
+        <label class="switch-row front-row" for="new-front">
+          <span class="switch-text">
+            <span class="switch-title">⭐ Ilagay sa front page</span>
+            <span class="switch-note">ON = laging nasa Benta page, kahit hindi best seller</span>
+          </span>
+          <span class="switch">
+            <input type="checkbox" id="new-front" role="switch">
+            <span class="switch-track"><span class="switch-knob"></span></span>
+            <span class="switch-state">OFF</span>
+          </span>
+        </label>
+
         <button type="submit" class="primary wide">➕ Dagdag</button>
         <p id="form-message" class="hint"></p>
       </form>
@@ -383,6 +395,18 @@
       <label>Picture (tap one)</label>
       <div id="edit-icons" class="icon-picker"></div>
 
+        <label class="switch-row front-row" for="edit-front">
+          <span class="switch-text">
+            <span class="switch-title">⭐ Ilagay sa front page</span>
+            <span class="switch-note">ON = laging nasa Benta page, kahit hindi best seller</span>
+          </span>
+          <span class="switch">
+            <input type="checkbox" id="edit-front" role="switch">
+            <span class="switch-track"><span class="switch-knob"></span></span>
+            <span class="switch-state">OFF</span>
+          </span>
+        </label>
+
       <label for="edit-barcode">Barcode</label>
       <div class="inline">
         <input type="text" id="edit-barcode" inputmode="numeric" autocomplete="off" required>
@@ -426,6 +450,12 @@
   <div id="scanner-overlay" class="overlay dark" hidden>
     <div class="scanner-box">
       <div id="reader"></div>
+      <!-- Zoom slider: only shown on phones whose camera allows zoom -->
+      <div id="zoom-row" class="zoom-row" hidden>
+        <span>🔍</span>
+        <input type="range" id="zoom-slider" min="1" max="3" step="0.1" value="1" aria-label="Zoom">
+        <span id="zoom-value">1x</span>
+      </div>
       <p id="scanner-status" class="scanner-status"></p>
       <!-- Backup way to scan: take a photo of the barcode with the phone's normal camera -->
       <button type="button" id="scanner-photo-btn" class="secondary wide">🖼️ Kunan ng litrato ang barcode</button>
