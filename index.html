@@ -6,11 +6,11 @@
   <title>My Sari-Sari POS</title>
 
   <!-- These lines let the page be added to the iPhone Home Screen like a real app -->
-  <meta name="theme-color" content="#2b2a28">
+  <meta name="theme-color" content="#ffffff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Sari POS">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="icon" href="icon-192.png">
@@ -20,7 +20,7 @@
 <body>
 
   <header>
-    <h1>🏪 My Sari-Sari POS</h1>
+    <h1>My Sari-Sari POS</h1>
     <div class="today">
       Ngayon <strong id="today-total">₱0.00</strong>
       &middot; <span id="today-count">0</span> transactions
@@ -37,20 +37,20 @@
         <input type="text" id="barcode-input" inputmode="numeric" autocomplete="off"
                placeholder="Barcode" aria-label="Barcode">
         <button type="submit" class="secondary">Add</button>
-        <button type="button" id="camera-btn" class="primary">📷 Scan</button>
+        <button type="button" id="camera-btn" class="primary"><i data-icon="scan"></i>Scan</button>
       </form>
       <p id="message" class="message" role="status"></p>
-      <button type="button" id="last-receipt-btn" class="receipt-btn" hidden>🧾 Resibo ng huling benta</button>
+      <button type="button" id="last-receipt-btn" class="receipt-btn" hidden><i data-icon="receipt"></i>Resibo ng huling benta</button>
 
       <h2>GCash &amp; Maya</h2>
       <div class="wallet-row">
         <button type="button" class="wallet-tile gcash" data-wallet="gcash">
-          <span class="wallet-name">📱 GCash</span>
+          <span class="wallet-name">GCash</span>
           <span class="wallet-bal" id="bal-gcash">₱0.00</span>
           <span class="wallet-sub">Tap for cash in / out</span>
         </button>
         <button type="button" class="wallet-tile maya" data-wallet="maya">
-          <span class="wallet-name">📱 Maya</span>
+          <span class="wallet-name">Maya</span>
           <span class="wallet-bal" id="bal-maya">₱0.00</span>
           <span class="wallet-sub">Tap for cash in / out</span>
         </button>
@@ -61,7 +61,7 @@
       <!-- ON = only the 10 best sellers are shown. OFF = every product is shown. -->
       <label class="switch-row" for="best-toggle">
         <span class="switch-text">
-          <span class="switch-title">⭐ Top 10 lang</span>
+          <span class="switch-title">Top 10 lang</span>
           <span id="best-note" class="switch-note"></span>
         </span>
         <span class="switch">
@@ -71,7 +71,7 @@
         </span>
       </label>
 
-      <input type="search" id="search-input" placeholder="🔍 Hanapin ang paninda" aria-label="Hanapin ang paninda">
+      <input type="search" id="search-input" placeholder="Hanapin ang paninda" aria-label="Hanapin ang paninda">
       <div id="tile-grid" class="tile-grid"></div>
 
       <h2 id="cart-title">Benta ngayon</h2>
@@ -79,7 +79,7 @@
       <!-- ON = the items in the list are taken for ourselves: stock goes down, but no sale and no profit -->
       <label class="switch-row own-row" for="own-toggle">
         <span class="switch-text">
-          <span class="switch-title">🏠 Para samen</span>
+          <span class="switch-title">Para samen</span>
           <span class="switch-note">Kukunin namin. Mababawas sa stock, wala sa benta at kita.</span>
         </span>
         <span class="switch">
@@ -110,7 +110,7 @@
 
       <h2>Kita ngayon</h2>
       <div class="stat-row two profit-row">
-        <div class="stat profit"><div class="stat-label">💚 Kita</div><div id="stat-profit" class="stat-value">₱0.00</div></div>
+        <div class="stat profit"><div class="stat-label">Kita</div><div id="stat-profit" class="stat-value">₱0.00</div></div>
         <div class="stat"><div class="stat-label">Sa paninda</div><div id="stat-profit-items" class="stat-value">₱0.00</div></div>
       </div>
       <p id="profit-hint" class="hint"></p>
@@ -125,7 +125,7 @@
       <h2>Last 7 days</h2>
       <div class="stat-row two">
         <div class="stat"><div class="stat-label">7-day total</div><div id="wk7-total" class="stat-value">₱0.00</div></div>
-        <div class="stat profit"><div class="stat-label">💚 Kita</div><div id="wk7-profit" class="stat-value">₱0.00</div></div>
+        <div class="stat profit"><div class="stat-label">Kita</div><div id="wk7-profit" class="stat-value">₱0.00</div></div>
       </div>
 
       <h2>Pumili ng araw</h2>
@@ -138,7 +138,7 @@
         <div class="stat"><div class="stat-label">Items</div><div id="wk-items" class="stat-value">0</div></div>
       </div>
       <div class="stat-row two">
-        <div class="stat profit"><div class="stat-label">💚 Kita</div><div id="wk-profit" class="stat-value">₱0.00</div></div>
+        <div class="stat profit"><div class="stat-label">Kita</div><div id="wk-profit" class="stat-value">₱0.00</div></div>
         <div class="stat"><div class="stat-label">Fees</div><div id="wk-fees" class="stat-value">₱0.00</div></div>
       </div>
       <p id="wk-hint" class="hint"></p>
@@ -166,7 +166,7 @@
 
       <h2>Paninda &amp; stock</h2>
       <p class="hint tap-hint">Tap ang paninda para i-edit o burahin.</p>
-      <input type="search" id="product-search" placeholder="🔍 Hanapin ang paninda" aria-label="Hanapin ang paninda">
+      <input type="search" id="product-search" placeholder="Hanapin ang paninda" aria-label="Hanapin ang paninda">
       <div id="product-list" class="product-list"></div>
 
       <h2>Magdagdag ng paninda</h2>
@@ -203,12 +203,19 @@
           </div>
         </div>
 
-        <label>Picture (pumili, o hayaan na lang)</label>
-        <div id="new-icons" class="icon-picker"></div>
+        <label>Larawan (para madaling makilala)</label>
+        <div class="photo-field">
+          <span id="new-photo-preview"></span>
+          <div class="photo-buttons">
+            <button type="button" id="new-photo-btn" class="secondary"><i data-icon="camera"></i>Kumuha ng litrato</button>
+            <button type="button" id="new-photo-clear" class="link-btn" hidden>Alisin ang litrato</button>
+          </div>
+          <input type="file" id="new-photo-file" accept="image/*" hidden>
+        </div>
 
         <label class="switch-row front-row" for="new-front">
           <span class="switch-text">
-            <span class="switch-title">⭐ Ilagay sa front page</span>
+            <span class="switch-title">Ilagay sa front page</span>
             <span class="switch-note">ON = laging nasa Benta page, kahit hindi best seller</span>
           </span>
           <span class="switch">
@@ -218,7 +225,7 @@
           </span>
         </label>
 
-        <button type="submit" class="primary wide">➕ Dagdag</button>
+        <button type="submit" class="primary wide"><i data-icon="plus"></i>Dagdag</button>
         <p id="form-message" class="hint"></p>
       </form>
 
@@ -228,7 +235,7 @@
         <input type="text" id="set-store-name" autocomplete="off" placeholder="Sari-Sari Store">
         <label class="switch-row voice-row" for="voice-toggle">
           <span class="switch-text">
-            <span class="switch-title">🔊 Boses</span>
+            <span class="switch-title">Boses</span>
             <span class="switch-note">Sinasabi ang total at sukli</span>
           </span>
           <span class="switch">
@@ -274,7 +281,7 @@
       <h2>Backup</h2>
       <p class="hint">Your data lives on this device only. Save a backup file regularly, and keep a copy somewhere safe (Files, Google Drive, a flash drive).</p>
       <div class="button-row">
-        <button id="backup-btn" class="secondary">💾 Save backup</button>
+        <button id="backup-btn" class="secondary"><i data-icon="save"></i>Save backup</button>
         <button id="restore-btn" class="secondary">Restore backup</button>
       </div>
       <p id="backup-status" class="hint"></p>
@@ -300,16 +307,16 @@
       <div class="bar-label"><span id="item-count">0</span> items</div>
       <div id="cart-total" class="bar-total">₱0.00</div>
     </div>
-    <button id="charge-btn" class="primary">💰 Bayad</button>
+    <button id="charge-btn" class="primary"><i data-icon="cash"></i>Bayad</button>
   </div>
 
   <!-- Bottom tabs -->
   <nav class="tabs">
-    <button id="tab-sell" class="tab active" data-view="sell"><span class="tab-icon">🛒</span><span>Benta</span></button>
-    <button id="tab-today" class="tab" data-view="today"><span class="tab-icon">📋</span><span>Ngayon</span></button>
-    <button id="tab-week" class="tab" data-view="week"><span class="tab-icon">🗓️</span><span>7 Days</span></button>
-    <button id="tab-utang" class="tab" data-view="utang"><span class="tab-icon">📒</span><span>Utang</span></button>
-    <button id="tab-products" class="tab" data-view="products"><span class="tab-icon">📦</span><span>Paninda</span></button>
+    <button id="tab-sell" class="tab active" data-view="sell"><i class="tab-icon" data-icon="cart"></i><span>Benta</span></button>
+    <button id="tab-today" class="tab" data-view="today"><i class="tab-icon" data-icon="clipboard"></i><span>Ngayon</span></button>
+    <button id="tab-week" class="tab" data-view="week"><i class="tab-icon" data-icon="calendar"></i><span>7 Days</span></button>
+    <button id="tab-utang" class="tab" data-view="utang"><i class="tab-icon" data-icon="book"></i><span>Utang</span></button>
+    <button id="tab-products" class="tab" data-view="products"><i class="tab-icon" data-icon="box"></i><span>Paninda</span></button>
   </nav>
 
   <!-- ============ PAYMENT SHEET ============ -->
@@ -317,7 +324,7 @@
     <div class="sheet">
       <h2>Bayad</h2>
       <div class="sheet-total">Total <strong id="pay-total">₱0.00</strong></div>
-      <button type="button" id="pay-speak" class="speak-btn">🔊 Pakinggan</button>
+      <button type="button" id="pay-speak" class="speak-btn"><i data-icon="speaker"></i>Pakinggan</button>
 
       <label for="cash-input">Cash na ibinayad</label>
       <input type="number" id="cash-input" inputmode="decimal" min="0" step="0.01" placeholder="0.00">
@@ -326,10 +333,10 @@
       <div class="change-row"><span id="change-label">Sukli</span><strong id="change">₱0.00</strong></div>
 
       <div class="button-row">
-        <button id="pay-cancel" class="secondary">❌ Cancel</button>
-        <button id="pay-confirm" class="primary">✅ Tapos na</button>
+        <button id="pay-cancel" class="secondary">Cancel</button>
+        <button id="pay-confirm" class="primary"><i data-icon="check"></i>Tapos na</button>
       </div>
-      <button type="button" id="pay-utang" class="utang-btn">📒 Ilagay sa utang</button>
+      <button type="button" id="pay-utang" class="utang-btn">Ilagay sa utang</button>
     </div>
   </div>
 
@@ -341,8 +348,8 @@
       <div class="sheet-total">Balance <strong id="wallet-balance">₱0.00</strong></div>
 
       <div class="seg" role="group" aria-label="Cash in or cash out">
-        <button type="button" id="mode-in" class="active"><span class="flow">💵 ➜ 📱</span><span>Cash in</span></button>
-        <button type="button" id="mode-out"><span class="flow">📱 ➜ 💵</span><span>Cash out</span></button>
+        <button type="button" id="mode-in" class="active"><span class="flow"><i data-icon="cash"></i><i data-icon="arrow"></i><i data-icon="phone"></i></span><span>Cash in</span></button>
+        <button type="button" id="mode-out"><span class="flow"><i data-icon="phone"></i><i data-icon="arrow"></i><i data-icon="cash"></i></span><span>Cash out</span></button>
       </div>
       <p id="mode-hint" class="hint"></p>
 
@@ -350,7 +357,7 @@
       <input type="number" id="wallet-amount" inputmode="decimal" min="1" step="0.01" placeholder="0">
 
       <div id="wallet-quick" class="quick-cash"></div>
-      <button type="button" id="wallet-speak" class="speak-btn">🔊 Pakinggan</button>
+      <button type="button" id="wallet-speak" class="speak-btn"><i data-icon="speaker"></i>Pakinggan</button>
 
       <label for="wallet-fee">Fee (₱): filled in automatically, you can change it</label>
       <input type="number" id="wallet-fee" inputmode="decimal" min="0" step="0.01" placeholder="0">
@@ -363,8 +370,8 @@
       <p id="wallet-error" class="hint error-text"></p>
 
       <div class="button-row">
-        <button type="button" id="wallet-cancel" class="secondary">❌ Cancel</button>
-        <button type="submit" id="wallet-confirm" class="primary" disabled>✅ Complete</button>
+        <button type="button" id="wallet-cancel" class="secondary">Cancel</button>
+        <button type="submit" id="wallet-confirm" class="primary" disabled><i data-icon="check"></i>Complete</button>
       </div>
     </form>
   </div>
@@ -384,8 +391,8 @@
       <input type="text" id="utang-by" autocomplete="off" placeholder="Kung iba ang kumuha ng items">
 
       <div class="button-row">
-        <button type="button" id="utang-cancel" class="secondary">❌ Cancel</button>
-        <button type="submit" class="primary">📒 Ilagay sa utang</button>
+        <button type="button" id="utang-cancel" class="secondary">Cancel</button>
+        <button type="submit" class="primary">Ilagay sa utang</button>
       </div>
     </form>
   </div>
@@ -402,14 +409,14 @@
           <input type="number" id="debt-pay-amount" inputmode="decimal" min="0" step="0.01" placeholder="0">
           <button type="button" id="debt-pay-full" class="secondary">Full</button>
         </div>
-        <button type="submit" class="primary wide">💵 Record payment</button>
+        <button type="submit" class="primary wide">Record payment</button>
         <p id="debt-pay-message" class="hint error-text"></p>
       </form>
 
       <h2>History</h2>
       <div id="debt-entries" class="today-list"></div>
 
-      <button type="button" id="debt-close" class="secondary wide">✖ Close</button>
+      <button type="button" id="debt-close" class="secondary wide">Close</button>
     </div>
   </div>
 
@@ -421,12 +428,19 @@
       <label for="edit-name">Pangalan ng paninda</label>
       <input type="text" id="edit-name" required>
 
-      <label>Picture (tap one)</label>
-      <div id="edit-icons" class="icon-picker"></div>
+      <label>Larawan (para madaling makilala)</label>
+      <div class="photo-field">
+          <span id="edit-photo-preview"></span>
+          <div class="photo-buttons">
+            <button type="button" id="edit-photo-btn" class="secondary"><i data-icon="camera"></i>Kumuha ng litrato</button>
+            <button type="button" id="edit-photo-clear" class="link-btn" hidden>Alisin ang litrato</button>
+          </div>
+          <input type="file" id="edit-photo-file" accept="image/*" hidden>
+        </div>
 
         <label class="switch-row front-row" for="edit-front">
           <span class="switch-text">
-            <span class="switch-title">⭐ Ilagay sa front page</span>
+            <span class="switch-title">Ilagay sa front page</span>
             <span class="switch-note">ON = laging nasa Benta page, kahit hindi best seller</span>
           </span>
           <span class="switch">
@@ -468,10 +482,10 @@
       <p id="edit-message" class="hint error-text"></p>
 
       <div class="button-row">
-        <button type="button" id="edit-cancel" class="secondary">❌ Cancel</button>
-        <button type="submit" class="primary">✅ Save</button>
+        <button type="button" id="edit-cancel" class="secondary">Cancel</button>
+        <button type="submit" class="primary">Save</button>
       </div>
-      <button type="button" id="edit-delete" class="link-btn">🗑 Burahin ang paninda</button>
+      <button type="button" id="edit-delete" class="link-btn"><i data-icon="trash"></i>Burahin ang paninda</button>
     </form>
   </div>
 
@@ -482,9 +496,9 @@
       <div id="receipt-paper" class="receipt-paper"></div>
       <div class="button-row receipt-actions">
         <button type="button" id="receipt-close" class="secondary">Isara</button>
-        <button type="button" id="receipt-share" class="primary">📤 Ipadala</button>
+        <button type="button" id="receipt-share" class="primary"><i data-icon="share"></i>Ipadala</button>
       </div>
-      <button type="button" id="receipt-print" class="secondary wide receipt-actions">🖨️ I-print</button>
+      <button type="button" id="receipt-print" class="secondary wide receipt-actions"><i data-icon="print"></i>I-print</button>
     </div>
   </div>
 
@@ -495,7 +509,7 @@
       <div id="reader"></div>
       <!-- Zoom slider: only shown on phones whose camera allows zoom -->
       <div id="zoom-row" class="zoom-row" hidden>
-        <span>🔍</span>
+        <span><i data-icon="search"></i></span>
         <input type="range" id="zoom-slider" min="1" max="3" step="0.1" value="1" aria-label="Zoom">
         <span id="zoom-value">1x</span>
       </div>

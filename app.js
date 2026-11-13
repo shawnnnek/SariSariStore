@@ -28,7 +28,44 @@ const SETTINGS_KEY = "pos_settings";      // on/off switches
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
 const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "" };
 const BEST_COUNT = 10;
-const APP_VERSION = "v12 - Nov 13";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v13 - Nov 13";   // shown in the Paninda tab, so you can check which version a phone is running
+
+// ----- Icons: simple line icons (instead of emojis). icon("trash") gives the picture as HTML. -----
+const ICONS = {
+  cart: '<circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.6 12.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"/>',
+  clipboard: '<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  book: '<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v16H6.5A1.5 1.5 0 0 0 5 20.5z"/><path d="M5 20.5A1.5 1.5 0 0 0 6.5 22H19v-3M9 8h6"/>',
+  box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 9v6M12 9v6M16 9v6"/>',
+  receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',
+  speaker: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4zM15.5 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/>',
+  star: '<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9 6.8 19.7l1-5.9L3.5 9.7l5.9-.8z"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  print: '<path d="M7 9V3h10v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v7H7z"/>',
+  share: '<path d="M12 15V3M8 7l4-4 4 4M5 12v8h14v-8"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  camera: '<path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  save: '<path d="M12 4v11M7.5 11L12 15.5 16.5 11M5 19.5h14"/>',
+  cash: '<rect x="3" y="6.5" width="18" height="11" rx="2"/><circle cx="12" cy="12" r="2.5"/>',
+  phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>'
+};
+
+function icon(name, extraClass) {
+  return '<svg class="ico' + (extraClass ? " " + extraClass : "") + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || "") + "</svg>";
+}
+
+// Turns every <i data-icon="trash"></i> in the page into the picture
+function drawIcons() {
+  document.querySelectorAll("i[data-icon]").forEach(function (el) {
+    if (!el.firstChild) {
+      el.innerHTML = icon(el.getAttribute("data-icon"));
+    }
+  });
+}
 
 // Starting values for GCash / Maya. Your numbers are typed in the app (Products tab),
 // NOT written here, because this code is public on GitHub.
@@ -155,7 +192,7 @@ function findProduct(barcode) {
 let messageTimer = null;
 function showMessage(text, type) {
   const box = document.getElementById("message");
-  box.textContent = (type === "error" ? "⚠️ " : "✅ ") + text;
+  box.textContent = text;
   box.className = "message " + type;
   clearTimeout(messageTimer);
   messageTimer = setTimeout(function () {
@@ -409,12 +446,13 @@ function renderTiles() {
     const stockText = p.stock <= 0 ? "Ubos na" : (p.stock - qty) + " pa";
 
     const low = p.stock - qty <= p.reorder;            // running low: shown in red
-    const colors = tileColors(p);
-    html += '<button class="tile' + (qty > 0 ? " in-cart" : "") + '" style="--tile-bg:' + colors[0] + ";--tile-border:" + colors[1] + '" data-barcode="' + escapeHtml(p.barcode) + '"' + (soldOut ? " disabled" : "") + ">" +
-      '<span class="tile-icon">' + productIcon(p) + "</span>" +
-      '<span class="tile-name">' + escapeHtml(p.name) + "</span>" +
-      '<span class="tile-price">' + peso(p.price) + "</span>" +
-      '<span class="tile-stock' + (low ? " low" : "") + '">' + stockText + "</span>" +
+    html += '<button class="tile' + (qty > 0 ? " in-cart" : "") + '" data-barcode="' + escapeHtml(p.barcode) + '"' + (soldOut ? " disabled" : "") + ">" +
+      thumbHtml(p) +
+      '<span class="tile-text">' +
+        '<span class="tile-name">' + escapeHtml(p.name) + "</span>" +
+        '<span class="tile-price">' + peso(p.price) + "</span>" +
+        '<span class="tile-stock' + (low ? " low" : "") + '">' + stockText + "</span>" +
+      "</span>" +
       (qty > 0 ? '<span class="tile-badge">' + qty + "</span>" : "") +
       "</button>";
   });
@@ -431,7 +469,7 @@ function renderCart() {
   cart.forEach(function (item) {
     const cartProduct = findProduct(item.barcode);
     html += "<li>" +
-      '<span class="cart-icon">' + (cartProduct ? productIcon(cartProduct) : "🛒") + "</span>" +
+      thumbHtml(cartProduct || { name: item.name }, "small") +
       '<div class="cart-info"><div class="cart-name">' + escapeHtml(item.name) + "</div>" +
       '<div class="cart-sub">' + peso(item.price) + " bawat isa</div></div>" +
       '<div class="stepper">' +
@@ -450,10 +488,10 @@ function renderCart() {
 }
 
 function renderCheckoutBar() {
-  document.getElementById("cart-total").textContent = ownMode ? "🏠 Para samen" : peso(cartTotal());
+  document.getElementById("cart-total").textContent = ownMode ? "Para samen" : peso(cartTotal());
   document.getElementById("item-count").textContent = cartItemCount();
   const button = document.getElementById("charge-btn");
-  button.textContent = ownMode ? "🏠 Kunin" : "💰 Bayad";
+  button.innerHTML = icon(ownMode ? "check" : "cash") + (ownMode ? "Kunin" : "Bayad");
   button.disabled = cart.length === 0;
 }
 
@@ -487,10 +525,9 @@ function renderProducts() {
         : '<div class="product-profit loss">Lugi ' + peso(-diff) + "</div>";
     }
 
-    const colors = tileColors(p);
     html += '<div class="product-row" data-barcode="' + escapeHtml(p.barcode) + '">' +
-      '<span class="prod-icon" style="background:' + colors[0] + ";border-color:" + colors[1] + '">' + productIcon(p) + "</span>" +
-      '<div class="product-main"><div class="product-name">' + (p.front ? "⭐ " : "") + escapeHtml(p.name) + "</div>" +
+      thumbHtml(p, "small") +
+      '<div class="product-main"><div class="product-name">' + (p.front ? icon("star", "ico-star") : "") + escapeHtml(p.name) + "</div>" +
       '<div class="product-code">' + escapeHtml(p.barcode) + "</div></div>" +
       '<div class="product-nums"><div>' + peso(p.price) + "</div>" +
       '<div class="product-stock">Stock: ' + p.stock + "</div>" + profitLine + "</div>" +
@@ -644,7 +681,7 @@ function ownNotes(stats) {
   if (stats.ownItems === 0) {
     return "";
   }
-  return "🏠 Para samen: " + stats.ownItems + " item" + (stats.ownItems === 1 ? "" : "s") +
+  return "Para samen: " + stats.ownItems + " item" + (stats.ownItems === 1 ? "" : "s") +
     (stats.ownCost > 0 ? " (puhunan " + peso(stats.ownCost) + ")" : "") +
     ". Hindi kasama sa benta at kita.";
 }
@@ -714,8 +751,8 @@ function txnHtml(events, showDay, emptyText) {
         ? "Puhunan " + peso(round2(costTotal)) + " &middot; hindi kasama sa kita"
         : "Hindi kasama sa benta at kita";
       html += '<div class="txn k-own">' +
-        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag own">🏠 PARA SAMEN</span></span>' +
-        '<span class="txn-total">🏠</span></div>' +
+        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag own">PARA SAMEN</span></span>' +
+        '<span class="txn-total"></span></div>' +
         '<ul class="txn-items">' + lines + "</ul>" +
         '<div class="txn-pay">' + note + "</div></div>";
 
@@ -731,8 +768,8 @@ function txnHtml(events, showDay, emptyText) {
       const block = html.slice(before);
       const attrs = ' data-kind="' + event.kind + '" data-order="' + event.order + '"';
       const buttons = '<div class="txn-actions">' +
-        (event.kind === "sale" ? '<button type="button" class="txn-btn" data-act="receipt"' + attrs + ">🧾 Resibo</button>" : "") +
-        '<button type="button" class="txn-btn undo" data-act="undo"' + attrs + ">🗑️ Burahin</button></div>";
+        (event.kind === "sale" ? '<button type="button" class="txn-btn" data-act="receipt"' + attrs + ">"+icon("receipt")+"Resibo</button>" : "") +
+        '<button type="button" class="txn-btn undo" data-act="undo"' + attrs + ">"+icon("trash")+"Burahin</button></div>";
       html = html.slice(0, before) + block.slice(0, -6) + buttons + "</div>";
     }
   });
@@ -873,7 +910,7 @@ const QUICK_CASH = [20, 50, 100, 200, 500, 1000];
 
 function buildQuickCash() {
   // each button has the color of the real peso bill, so it can be found by color
-  let html = '<button type="button" class="bill exact" data-cash="exact">✔ Exact</button>';
+  let html = '<button type="button" class="bill exact" data-cash="exact">Exact</button>';
   QUICK_CASH.forEach(function (amount) {
     html += '<button type="button" class="bill ' + BILL_CLASS[amount] + '" data-cash="' + amount + '">₱' + amount + "</button>";
   });
@@ -1249,8 +1286,8 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
   if (!isNaN(cost) && cost >= 0) {
     newProduct.cost = cost;               // puhunan: what we paid for it
   }
-  if (newIcon) {
-    newProduct.icon = newIcon;
+  if (newPhoto) {
+    newProduct.photo = newPhoto;          // small photo of the product
   }
   if (document.getElementById("new-front").checked) {
     newProduct.front = true;              // always on the front page
@@ -1260,8 +1297,8 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
   saveData();
   renderAll();
   this.reset();
-  newIcon = "";
-  setPickedIcon("new-icons", "");
+  newPhoto = "";
+  showPhotoField("new", "", "");
   showProfitLine("new-cost", "new-price", "new-profit");
   showFrontState("new-front");
   message.textContent = "Naidagdag: " + name;
@@ -1290,9 +1327,9 @@ function showProfitLine(costId, priceId, lineId) {
   const diff = round2(price - cost);
   if (diff < 0) {
     line.classList.add("loss");
-    line.textContent = "⚠️ Lugi: " + peso(-diff) + " bawat isa";
+    line.textContent = "Lugi: " + peso(-diff) + " bawat isa";
   } else {
-    line.textContent = "💚 Kita: " + peso(diff) + " bawat isa";
+    line.textContent = "Kita: " + peso(diff) + " bawat isa";
   }
 }
 ["new-cost", "new-price"].forEach(function (id) {
@@ -1318,8 +1355,8 @@ function openEdit(barcode) {
     return;
   }
   editingBarcode = product.barcode;
-  editIcon = product.icon || "";
-  setPickedIcon("edit-icons", editIcon);
+  editPhoto = product.photo || "";
+  showPhotoField("edit", editPhoto, product.name);
   document.getElementById("edit-name").value = product.name;
   document.getElementById("edit-barcode").value = product.barcode;
   document.getElementById("edit-price").value = product.price;
@@ -1379,11 +1416,12 @@ function saveEdit() {
   } else {
     delete product.front;
   }
-  if (editIcon) {
-    product.icon = editIcon;
+  if (editPhoto) {
+    product.photo = editPhoto;
   } else {
-    delete product.icon;               // no picture chosen: it is guessed from the name
+    delete product.photo;              // no photo: a colored letter is shown
   }
+  delete product.icon;                 // old emoji pictures are not used anymore
 
   // If this product is in the current sale, update that line too.
   const line = cart.find(function (item) { return item.barcode === oldBarcode; });
@@ -1768,7 +1806,7 @@ function renderUtang() {
       : '<span class="pill ok-status">PAID</span>';
     html += '<div class="product-row debt-row" data-key="' + escapeHtml(p.key) + '">' +
       avatarHtml(p.name) +
-      '<div class="product-main"><div class="product-name">' + (p.front ? "⭐ " : "") + escapeHtml(p.name) + "</div>" +
+      '<div class="product-main"><div class="product-name">' + escapeHtml(p.name) + "</div>" +
       '<div class="product-code">Last: ' + escapeHtml(lastEntry.date) + "</div></div>" +
       status + "</div>";
   });
@@ -1921,66 +1959,40 @@ byId("pay-utang").addEventListener("click", openUtangCharge);
 byId("utang-cancel").addEventListener("click", closeUtangCharge);
 
 
-/* ---------- 11e. PICTURES AND COLORS ----------
-   Every product has a picture (an emoji) and a color, so people who can't read well
-   can find things by looking. If no picture is chosen, one is guessed from the name. */
+/* ---------- 11e. PICTURES ----------
+   A product shows its photo. No photo yet? It shows a colored tile with the first letter,
+   so people who can't read well can still tell items apart by the photo or the color. */
 
-const PRODUCT_ICONS = ["🍜", "☕", "🧃", "💧", "🥤", "🧴", "🧼", "🪥", "🧻", "🍞", "🍪", "🍫", "🍬", "🍿", "🥫", "🧂", "🍚", "🥚", "🛢️", "🔋", "🛒"];
-
-// soft background and border color for the product tiles (the same picture always gets the same color)
-const TILE_COLORS = [
-  ["#fff3c4", "#eec746"],   // yellow
-  ["#ffdce8", "#ee8fb0"],   // pink
-  ["#d8eefc", "#6fbbe8"],   // sky blue
-  ["#e8f6c8", "#a6cf4f"],   // lime
-  ["#ffe0cc", "#ee9f6d"],   // peach
-  ["#e6deff", "#a994ec"],   // lilac
-  ["#cff3e6", "#62c9a7"],   // mint
-  ["#f1e6d2", "#cdb47f"]    // sand
+// muted background + letter color pairs (the same name always gets the same pair)
+const LETTER_COLORS = [
+  ["#e6ecfb", "#2d4a9a"],
+  ["#fbe7df", "#a3441c"],
+  ["#e1f2e9", "#1f6b45"],
+  ["#f1e6fa", "#6b3a99"],
+  ["#fbf0d3", "#8a6200"],
+  ["#dff1f3", "#176875"],
+  ["#fae3ec", "#a02857"],
+  ["#ebebe8", "#4b4b46"]
 ];
 
-// words in a product name -> picture
-const ICON_GUESS = [
-  ["🍜", ["noodle", "pancit", "canton", "lucky me", "nissin", "ramen"]],
-  ["☕", ["coffee", "kape", "kopiko", "nescafe", "great taste", "3-in-1", "3in1"]],
-  ["🧃", ["juice", "c2", "tang", "zest"]],
-  ["💧", ["water", "tubig", "mineral"]],
-  ["🥤", ["coke", "sprite", "royal", "pepsi", "softdrink", "soft drink", "soda", "mismo", "mountain dew", "7up", "sting", "gatorade"]],
-  ["🧴", ["shampoo", "conditioner", "lotion", "sunsilk", "palmolive", "creamsilk"]],
-  ["🧼", ["soap", "sabon", "safeguard", "dove", "detergent", "surf", "tide", "bleach", "zonrox"]],
-  ["🪥", ["toothpaste", "toothbrush", "colgate", "close up"]],
-  ["🧻", ["tissue", "napkin"]],
-  ["🍞", ["bread", "pandesal", "tasty"]],
-  ["🍪", ["biscuit", "cracker", "skyflakes", "sky flakes", "fita", "cookie", "oreo", "rebisco", "hello panda"]],
-  ["🍫", ["chocolate", "choco", "cloud 9", "snickers"]],
-  ["🍬", ["candy", "sweet", "lollipop", "menthol", "mentos", "hany", "pastillas"]],
-  ["🍿", ["chips", "piattos", "chippy", "nova", "popcorn", "v-cut", "oishi"]],
-  ["🥫", ["sardines", "corned", "tuna", "canned", "ligo", "555", "argentina", "mega"]],
-  ["🧂", ["salt", "asin", "pepper", "vetsin", "ajinomoto", "toyo", "soy", "suka", "vinegar", "patis", "ketchup", "sauce", "magic sarap", "seasoning"]],
-  ["🍚", ["rice", "bigas"]],
-  ["🥚", ["egg", "itlog"]],
-  ["🛢️", ["oil", "mantika"]],
-  ["🔋", ["battery", "baterya", "eveready"]]
-];
-
-function guessIcon(name) {
-  const text = String(name).toLowerCase();
-  for (let i = 0; i < ICON_GUESS.length; i++) {
-    const words = ICON_GUESS[i][1];
-    if (words.some(function (word) { return text.includes(word); })) {
-      return ICON_GUESS[i][0];
-    }
+function hashText(text) {
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
   }
-  return "🛒";
+  return hash;
 }
 
-function productIcon(p) {
-  return p.icon || guessIcon(p.name);
-}
-
-function tileColors(p) {
-  const index = PRODUCT_ICONS.indexOf(productIcon(p));
-  return TILE_COLORS[(index < 0 ? 0 : index) % TILE_COLORS.length];
+// The picture for a product: <img> if it has a photo, otherwise the colored letter
+function thumbHtml(p, size) {
+  const cls = "thumb" + (size ? " " + size : "");
+  if (p.photo) {
+    return '<img class="' + cls + '" src="' + p.photo + '" alt="">';
+  }
+  const name = String(p.name || "?");
+  const pair = LETTER_COLORS[hashText(name.toLowerCase()) % LETTER_COLORS.length];
+  const letter = name.trim().charAt(0).toUpperCase() || "?";
+  return '<span class="' + cls + ' letter" style="background:' + pair[0] + ";color:" + pair[1] + '">' + escapeHtml(letter) + "</span>";
 }
 
 // The round colored letter next to a person's name in Utang
@@ -1999,41 +2011,69 @@ function avatarHtml(name) {
 // Money buttons use the color of the real peso bills
 const BILL_CLASS = { 20: "b20", 50: "b50", 100: "b100", 200: "b200", 500: "b500", 1000: "b1000" };
 
-// ----- the row of pictures to choose from (Add product and Edit product) -----
-let newIcon = "";
-let editIcon = "";
+// ----- Photo of the product (Add product and Edit product) -----
+let newPhoto = "";
+let editPhoto = "";
 
-function buildIconPicker(id) {
-  byId(id).innerHTML = PRODUCT_ICONS.map(function (icon) {
-    return '<button type="button" class="icon-opt" data-icon="' + icon + '">' + icon + "</button>";
-  }).join("");
+// Shrinks the picked photo to a small square so it takes little space on the phone
+function readPhoto(file, done) {
+  const reader = new FileReader();
+  reader.onload = function () {
+    const img = new Image();
+    img.onload = function () {
+      const size = 120;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const side = Math.min(img.width, img.height);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, size, size);
+      ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+      done(canvas.toDataURL("image/jpeg", 0.7));
+    };
+    img.onerror = function () { done(""); };
+    img.src = reader.result;
+  };
+  reader.onerror = function () { done(""); };
+  reader.readAsDataURL(file);
 }
 
-function setPickedIcon(id, icon) {
-  byId(id).querySelectorAll(".icon-opt").forEach(function (button) {
-    button.classList.toggle("picked", button.getAttribute("data-icon") === icon);
+function showPhotoField(prefix, photo, name) {
+  byId(prefix + "-photo-preview").innerHTML = thumbHtml({ photo: photo, name: name || "?" }, "big");
+  byId(prefix + "-photo-clear").hidden = !photo;
+  byId(prefix + "-photo-btn").lastChild.textContent = photo ? "Palitan ang litrato" : "Kumuha ng litrato";
+}
+
+function setupPhotoField(prefix, getName, setPhoto) {
+  byId(prefix + "-photo-btn").addEventListener("click", function () {
+    byId(prefix + "-photo-file").click();
+  });
+  byId(prefix + "-photo-file").addEventListener("change", function () {
+    const file = this.files && this.files[0];
+    const input = this;
+    if (!file) { return; }
+    readPhoto(file, function (data) {
+      if (data) {
+        setPhoto(data);
+        showPhotoField(prefix, data, getName());
+      }
+      input.value = "";
+    });
+  });
+  byId(prefix + "-photo-clear").addEventListener("click", function () {
+    setPhoto("");
+    showPhotoField(prefix, "", getName());
+  });
+  // the colored letter follows the name while typing
+  byId(prefix + "-name").addEventListener("input", function () {
+    if (!byId(prefix + "-photo-clear").hidden) { return; }
+    showPhotoField(prefix, "", getName());
   });
 }
-
-// Tapping the same picture again un-picks it (so it goes back to guessing)
-byId("new-icons").addEventListener("click", function (event) {
-  const button = event.target.closest(".icon-opt");
-  if (button) {
-    const icon = button.getAttribute("data-icon");
-    newIcon = newIcon === icon ? "" : icon;
-    setPickedIcon("new-icons", newIcon);
-  }
-});
-byId("edit-icons").addEventListener("click", function (event) {
-  const button = event.target.closest(".icon-opt");
-  if (button) {
-    const icon = button.getAttribute("data-icon");
-    editIcon = editIcon === icon ? "" : icon;
-    setPickedIcon("edit-icons", editIcon);
-  }
-});
-buildIconPicker("new-icons");
-buildIconPicker("edit-icons");
+setupPhotoField("new", function () { return byId("new-name").value; }, function (data) { newPhoto = data; });
+setupPhotoField("edit", function () { return byId("edit-name").value; }, function (data) { editPhoto = data; });
+showPhotoField("new", "", "");
 
 // ----- quick amounts for GCash / Maya (tap instead of typing) -----
 const WALLET_QUICK = [100, 200, 300, 500, 1000, 2000];
@@ -2552,6 +2592,7 @@ renderVoiceSettings();
 
 /* ---------- 13. RUNS WHEN THE PAGE OPENS ---------- */
 
+drawIcons();
 buildQuickCash();
 renderSwitches();
 renderAll();
