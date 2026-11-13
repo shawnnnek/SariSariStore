@@ -26,9 +26,9 @@ const OWN_KEY = "pos_own";                // items taken "para samen" (for ourse
 const SETTINGS_KEY = "pos_settings";      // on/off switches
 
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
-const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "" };
+const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "", closings: [] };
 const BEST_COUNT = 10;
-const APP_VERSION = "v13 - Nov 13";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v14 - Nov 13";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // ----- Icons: simple line icons (instead of emojis). icon("trash") gives the picture as HTML. -----
 const ICONS = {
@@ -51,7 +51,10 @@ const ICONS = {
   save: '<path d="M12 4v11M7.5 11L12 15.5 16.5 11M5 19.5h14"/>',
   cash: '<rect x="3" y="6.5" width="18" height="11" rx="2"/><circle cx="12" cy="12" r="2.5"/>',
   phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
-  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>'
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  sheet: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  bell: '<path d="M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4"/>'
 };
 
 function icon(name, extraClass) {
@@ -250,7 +253,7 @@ function addToCart(barcode) {
   if (inCart) {
     inCart.qty = inCart.qty + 1;
   } else {
-    cart.push({ barcode: product.barcode, name: product.name, price: product.price, qty: 1 });
+    cart.push({ barcode: product.barcode, name: product.name, price: product.price, qty: 1, bundle: product.bundle || null });
   }
 
   const text = product.name + " - " + peso(product.price);
@@ -280,12 +283,42 @@ function changeQty(barcode, change) {
   renderSell();
 }
 
+// The price of one line. With a bundle price (for example 3 for 10 pesos) every full set
+// costs the bundle price and the pieces left over cost the normal price.
+function lineTotal(item) {
+  const b = item.bundle;
+  if (b && b.qty >= 2 && b.price >= 0 && item.qty >= b.qty) {
+    const sets = Math.floor(item.qty / b.qty);
+    return round2(sets * b.price + (item.qty - sets * b.qty) * item.price);
+  }
+  return round2(item.price * item.qty);
+}
+
+function bundleText(b) {
+  return b.qty + " for " + peso(b.price);
+}
+
+// Reads the two bundle boxes of the Add form ("new") or the Edit sheet ("edit").
+function readBundle(prefix) {
+  const q = byId(prefix + "-bundle-qty").value.trim();
+  const p = byId(prefix + "-bundle-price").value.trim();
+  if (q === "" && p === "") {
+    return { bundle: null };
+  }
+  const qty = parseInt(q, 10);
+  const price = parseFloat(p);
+  if (!(qty >= 2) || !(price >= 0)) {
+    return { error: "Bundle: ilagay ang bilang (2 pataas) at ang presyo." };
+  }
+  return { bundle: { qty: qty, price: price } };
+}
+
 function cartTotal() {
   let total = 0;
   cart.forEach(function (item) {
-    total = total + item.price * item.qty;
+    total = total + lineTotal(item);
   });
-  return total;
+  return round2(total);
 }
 
 function cartItemCount() {
@@ -304,6 +337,9 @@ function cartItemCount() {
 function cartLines() {
   return cart.map(function (item) {
     const line = { barcode: item.barcode, name: item.name, qty: item.qty, price: item.price };
+    if (item.bundle) {
+      line.bundle = item.bundle;
+    }
     const product = findProduct(item.barcode);
     if (product && typeof product.cost === "number") {
       line.cost = product.cost;
@@ -451,6 +487,7 @@ function renderTiles() {
       '<span class="tile-text">' +
         '<span class="tile-name">' + escapeHtml(p.name) + "</span>" +
         '<span class="tile-price">' + peso(p.price) + "</span>" +
+        (p.bundle ? '<span class="tile-bundle">' + bundleText(p.bundle) + "</span>" : "") +
         '<span class="tile-stock' + (low ? " low" : "") + '">' + stockText + "</span>" +
       "</span>" +
       (qty > 0 ? '<span class="tile-badge">' + qty + "</span>" : "") +
@@ -471,13 +508,13 @@ function renderCart() {
     html += "<li>" +
       thumbHtml(cartProduct || { name: item.name }, "small") +
       '<div class="cart-info"><div class="cart-name">' + escapeHtml(item.name) + "</div>" +
-      '<div class="cart-sub">' + peso(item.price) + " bawat isa</div></div>" +
+      '<div class="cart-sub">' + peso(item.price) + " bawat isa" + (item.bundle ? " &middot; " + bundleText(item.bundle) : "") + "</div></div>" +
       '<div class="stepper">' +
         '<button class="step" data-barcode="' + escapeHtml(item.barcode) + '" data-change="-1" aria-label="One less">&minus;</button>' +
         '<span class="qty">' + item.qty + "</span>" +
         '<button class="step" data-barcode="' + escapeHtml(item.barcode) + '" data-change="1" aria-label="One more">+</button>' +
       "</div>" +
-      '<div class="cart-line-total">' + peso(item.price * item.qty) + "</div>" +
+      '<div class="cart-line-total">' + peso(lineTotal(item)) + "</div>" +
       "</li>";
   });
 
@@ -606,7 +643,7 @@ function saleProfit(sale) {
     if (cost === null) {
       unknown += item.qty;
     } else {
-      profit += (item.price - cost) * item.qty;
+      profit += lineTotal(item) - cost * item.qty;
       known += item.qty;
     }
   });
@@ -700,7 +737,7 @@ function txnHtml(events, showDay, emptyText) {
       let lines = "";
       d.items.forEach(function (item) {
         lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span>" +
-          '<span class="line-amount">' + peso(item.price * item.qty) + "</span></li>";
+          '<span class="line-amount">' + peso(lineTotal(item)) + "</span></li>";
       });
 
       const parts = [];
@@ -849,6 +886,7 @@ function renderWeek() {
   document.getElementById("wk-fees").textContent = pesoShort(stats.fees);
   document.getElementById("wk-hint").textContent = (profitNotes(stats) + " " + ownNotes(stats)).trim();
   document.getElementById("week-list").innerHTML = txnHtml(dayEvents(weekDate), true, "Walang transactions sa araw na ito.");
+  renderWeekExtras(dates);
 }
 
 document.getElementById("day-strip").addEventListener("click", function (event) {
@@ -1120,7 +1158,7 @@ async function openScanner(mode) {
   try {
     await loadScannerLibrary();
   } catch (error) {
-    setScannerStatus("Hindi ma-load ang scanner. Check ang internet, o i-type ang barcode. Pwede pa rin ang litrato sa baba.");
+    setScannerStatus("Hindi ma-load ang scanner. Check ang internet, o i-type ang barcode.");
     return;
   }
   await startLive();
@@ -1172,12 +1210,12 @@ async function startLive() {
     // ask for continuous auto-focus (ignored by phones that can't)
     try { scanner.applyVideoConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (e) {}
     setupZoom();
-    setScannerStatus(scannerMode === "sell"
+    setScannerStatus(scannerMode === "sell" || scannerMode === "receive"
       ? "Itutok sa barcode, mga 15-20 cm ang layo, nakahiga ang barcode. Tuloy-tuloy ang scan hanggang pindutin ang Done."
       : "Itutok sa barcode.");
   } catch (error) {
     scanner = null;
-    setScannerStatus("Hindi mabuksan ang camera. Payagan ang camera para sa page na ito (iPhone: Settings > Safari > Camera). Pwede pa rin ang litrato sa baba.");
+    setScannerStatus("Hindi mabuksan ang camera. Payagan ang camera para sa page na ito (iPhone: Settings > Safari > Camera).");
   }
 }
 
@@ -1245,6 +1283,13 @@ function onScanSuccess(code, force) {
     return;
   }
 
+  if (scannerMode === "receive") {
+    const got = receiveAdd(code);
+    beep(got.ok);
+    setScannerStatus(got.text);
+    return;
+  }
+
   const result = addToCart(code);
   beep(result.ok);
   setScannerStatus(result.text);
@@ -1275,6 +1320,12 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
     reorder = 5;
   }
 
+  const bundleInfo = readBundle("new");
+  if (bundleInfo.error) {
+    message.textContent = bundleInfo.error;
+    return;
+  }
+
   const newProduct = {
     barcode: barcode,
     name: name,
@@ -1285,6 +1336,9 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
   const cost = parseFloat(document.getElementById("new-cost").value);
   if (!isNaN(cost) && cost >= 0) {
     newProduct.cost = cost;               // puhunan: what we paid for it
+  }
+  if (bundleInfo.bundle) {
+    newProduct.bundle = bundleInfo.bundle;   // for example 3 for 10 pesos
   }
   if (newPhoto) {
     newProduct.photo = newPhoto;          // small photo of the product
@@ -1364,6 +1418,8 @@ function openEdit(barcode) {
   showProfitLine("edit-cost", "edit-price", "edit-profit");
   document.getElementById("edit-stock").value = product.stock;
   document.getElementById("edit-reorder").value = product.reorder;
+  byId("edit-bundle-qty").value = product.bundle ? product.bundle.qty : "";
+  byId("edit-bundle-price").value = product.bundle ? product.bundle.price : "";
   document.getElementById("edit-front").checked = !!product.front;
   showFrontState("edit-front");
   document.getElementById("edit-message").textContent = "";
@@ -1400,7 +1456,18 @@ function saveEdit() {
     return;
   }
 
+  const bundleInfo = readBundle("edit");
+  if (bundleInfo.error) {
+    message.textContent = bundleInfo.error;
+    return;
+  }
+
   const oldBarcode = product.barcode;
+  if (bundleInfo.bundle) {
+    product.bundle = bundleInfo.bundle;
+  } else {
+    delete product.bundle;
+  }
   product.name = document.getElementById("edit-name").value.trim();
   product.barcode = newBarcode;
   product.price = parseFloat(document.getElementById("edit-price").value);
@@ -1429,6 +1496,7 @@ function saveEdit() {
     line.barcode = product.barcode;
     line.name = product.name;
     line.price = product.price;
+    line.bundle = product.bundle || null;
     if (line.qty > product.stock) {
       line.qty = product.stock;                      // can't sell more than we now have
     }
@@ -1785,6 +1853,15 @@ function renderUtang() {
   byId("debt-total").textContent = peso(round2(owed));
   byId("debt-people").textContent = owing + (owing === 1 ? " person" : " people");
 
+  const stale = people.filter(function (p) { return debtStaleDays(p) >= STALE_DAYS; });
+  let staleSum = 0;
+  stale.forEach(function (p) { staleSum += p.balance; });
+  byId("debt-stale").textContent = stale.length
+    ? stale.length + (stale.length === 1 ? " tao" : " katao") + " ang " + STALE_DAYS + "+ araw nang hindi nagbabayad (" + peso(round2(staleSum)) + ")."
+    : "";
+  byId("debt-stale-btn").hidden = stale.length === 0 && !staleOnly;
+  byId("debt-stale-btn").textContent = staleOnly ? "Ipakita lahat" : "Ipakita ang matagal nang hindi bayad";
+
   // suggestions while typing a name in the "Charge to utang" sheet
   byId("utang-names").innerHTML = people.map(function (p) {
     return '<option value="' + escapeHtml(p.name) + '"></option>';
@@ -1792,7 +1869,7 @@ function renderUtang() {
 
   const query = byId("debt-search").value.trim().toLowerCase();
   const shown = people
-    .filter(function (p) { return query === "" || p.name.toLowerCase().includes(query); })
+    .filter(function (p) { return (query === "" || p.name.toLowerCase().includes(query)) && (!staleOnly || debtStaleDays(p) >= STALE_DAYS); })
     .sort(function (a, b) {
       // people who still owe come first, biggest amount first
       return ((b.balance > 0) - (a.balance > 0)) || (b.balance - a.balance) || (b.last - a.last);
@@ -1802,7 +1879,8 @@ function renderUtang() {
   shown.forEach(function (p) {
     const lastEntry = p.entries[p.entries.length - 1];
     const status = p.balance > 0
-      ? '<div class="product-nums"><div>' + peso(p.balance) + "</div></div>"
+      ? '<div class="product-nums"><div>' + peso(p.balance) + "</div>" +
+          (debtStaleDays(p) >= STALE_DAYS ? '<div class="stale-days">' + debtStaleDays(p) + " araw na</div>" : "") + "</div>"
       : '<span class="pill ok-status">PAID</span>';
     html += '<div class="product-row debt-row" data-key="' + escapeHtml(p.key) + '">' +
       avatarHtml(p.name) +
@@ -1854,7 +1932,7 @@ function renderDebtDetail() {
       let lines = "";
       (entry.items || []).forEach(function (item) {
         lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span>" +
-          '<span class="line-amount">' + peso(item.price * item.qty) + "</span></li>";
+          '<span class="line-amount">' + peso(lineTotal(item)) + "</span></li>";
       });
       html += '<div class="txn"><div class="txn-head"><span class="txn-time">' + when + "</span>" +
         '<span class="txn-total">+' + peso(entry.amount) + "</span></div>" +
@@ -2356,7 +2434,7 @@ function receiptLines(sale) {
   const lines = [name, dayLabelLong(sale.date) + " " + sale.time, "--------------------------------"];
   sale.items.forEach(function (item) {
     lines.push(item.qty + " x " + item.name);
-    lines.push("     " + peso(item.price) + " = " + peso(item.price * item.qty));
+    lines.push("     " + (item.bundle && item.qty >= item.bundle.qty ? bundleText(item.bundle) : peso(item.price)) + " = " + peso(lineTotal(item)));
   });
   lines.push("--------------------------------");
   lines.push("TOTAL: " + peso(sale.total));
@@ -2588,6 +2666,653 @@ if ("speechSynthesis" in window) {
   window.speechSynthesis.addEventListener("voiceschanged", renderVoiceSettings);
 }
 renderVoiceSettings();
+
+
+/* ---------- 12. MGA GAMIT: DAGDAG STOCK, PAMILIHAN, CSV, SARA NA, CHART, UTANG PAALALA ---------- */
+
+function openSheet(id) { byId(id).hidden = false; }
+function closeSheet(id) { byId(id).hidden = true; }
+
+// Saves a text file: Share sheet on an iPhone, a normal download on a laptop.
+async function saveTextFile(fileName, text, type) {
+  try {
+    const file = new File([text], fileName, { type: type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: fileName });
+      return;
+    }
+  } catch (error) {
+    if (error && error.name === "AbortError") { return; }
+  }
+  const blob = new Blob([text], { type: type });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+}
+
+// Sends text through the Share sheet (Messenger, SMS...). Copies it if sharing isn't possible.
+function shareText(text) {
+  if (navigator.share) {
+    navigator.share({ text: text }).catch(function () {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(function () { alert("Na-copy."); }).catch(function () {});
+  }
+}
+
+byId("tool-receive").addEventListener("click", openReceive);
+byId("tool-shop").addEventListener("click", openShop);
+byId("tool-csv").addEventListener("click", function () { resetCsv(); openSheet("csv-overlay"); });
+
+
+/* ----- Dagdag stock: scan what arrived, then add it all to the stock ----- */
+let receiveLines = [];                         // [{ barcode, qty }]
+
+function openReceive() {
+  receiveLines = [];
+  byId("receive-message").textContent = "";
+  byId("receive-message").className = "message";
+  byId("receive-input").value = "";
+  renderReceive();
+  openSheet("receive-overlay");
+  if (hasMouse()) { byId("receive-input").focus(); }
+}
+
+function receiveAdd(code) {
+  const product = findProduct(String(code).trim());
+  if (!product) {
+    const text = "Wala sa listahan: " + code;
+    setReceiveMessage(text, "error");
+    return { ok: false, text: text };
+  }
+  let line = receiveLines.find(function (l) { return l.barcode === product.barcode; });
+  if (line) {
+    line.qty++;
+  } else {
+    line = { barcode: product.barcode, qty: 1 };
+    receiveLines.unshift(line);
+  }
+  const text = product.name + " +1 (" + line.qty + ")";
+  setReceiveMessage(text, "ok");
+  renderReceive();
+  return { ok: true, text: text };
+}
+
+function setReceiveMessage(text, type) {
+  const box = byId("receive-message");
+  box.textContent = text;
+  box.className = "message " + type;
+}
+
+function renderReceive() {
+  let html = "";
+  let pieces = 0;
+  receiveLines.forEach(function (line) {
+    const p = findProduct(line.barcode);
+    if (!p) { return; }
+    pieces += line.qty;
+    html += '<div class="product-row recv-row">' + thumbHtml(p, "small") +
+      '<div class="product-main"><div class="product-name">' + escapeHtml(p.name) + "</div>" +
+      '<div class="product-code">Stock: ' + p.stock + " &rarr; " + (p.stock + line.qty) + "</div></div>" +
+      '<div class="stepper">' +
+        '<button type="button" class="step recv-step" data-barcode="' + escapeHtml(p.barcode) + '" data-change="-1" aria-label="One less">&minus;</button>' +
+        '<input type="number" class="recv-qty" inputmode="numeric" min="0" data-barcode="' + escapeHtml(p.barcode) + '" value="' + line.qty + '" aria-label="Quantity">' +
+        '<button type="button" class="step recv-step" data-barcode="' + escapeHtml(p.barcode) + '" data-change="1" aria-label="One more">+</button>' +
+      "</div></div>";
+  });
+  if (html === "") {
+    html = '<p class="empty">Wala pang na-scan.</p>';
+  }
+  byId("receive-list").innerHTML = html;
+  byId("receive-done").disabled = pieces === 0;
+}
+
+byId("receive-form").addEventListener("submit", function (event) {
+  event.preventDefault();
+  const code = byId("receive-input").value.trim();
+  if (code) {
+    receiveAdd(code);
+  }
+  byId("receive-input").value = "";
+  if (hasMouse()) { byId("receive-input").focus(); }
+});
+byId("receive-camera").addEventListener("click", function () { openScanner("receive"); });
+byId("receive-list").addEventListener("click", function (event) {
+  const button = event.target.closest(".recv-step");
+  if (!button) { return; }
+  const line = receiveLines.find(function (l) { return l.barcode === button.getAttribute("data-barcode"); });
+  if (!line) { return; }
+  line.qty += parseInt(button.getAttribute("data-change"), 10);
+  if (line.qty <= 0) {
+    receiveLines = receiveLines.filter(function (l) { return l !== line; });
+  }
+  renderReceive();
+});
+byId("receive-list").addEventListener("change", function (event) {
+  const input = event.target.closest(".recv-qty");
+  if (!input) { return; }
+  const line = receiveLines.find(function (l) { return l.barcode === input.getAttribute("data-barcode"); });
+  const qty = parseInt(input.value, 10);
+  if (line) {
+    if (qty > 0) { line.qty = qty; } else { receiveLines = receiveLines.filter(function (l) { return l !== line; }); }
+  }
+  renderReceive();
+});
+byId("receive-cancel").addEventListener("click", function () {
+  if (receiveLines.length > 0 && !confirm("Itigil? Hindi pa naidadagdag ang mga na-scan.")) { return; }
+  closeSheet("receive-overlay");
+});
+byId("receive-done").addEventListener("click", function () {
+  let kinds = 0;
+  let pieces = 0;
+  receiveLines.forEach(function (line) {
+    const p = findProduct(line.barcode);
+    if (p && line.qty > 0) {
+      p.stock += line.qty;
+      kinds++;
+      pieces += line.qty;
+    }
+  });
+  receiveLines = [];
+  saveData();
+  renderAll();
+  closeSheet("receive-overlay");
+  alert("Naidagdag na ang stock: " + kinds + " paninda, " + pieces + " piraso.");
+});
+
+
+/* ----- Pamilihan: what to buy ----- */
+let shopRows = [];                             // [{ barcode, qty, on }]
+
+// How many pieces of each product were sold (or taken para samen) in the last few days
+function soldUnits(days) {
+  const cutoff = Date.now() - days * 86400000;
+  const counts = {};
+  function add(item) {
+    const key = normalizeBarcode(item.barcode);
+    counts[key] = (counts[key] || 0) + item.qty;
+  }
+  sales.forEach(function (sale) {
+    if (parseDate(sale.date).getTime() >= cutoff) { sale.items.forEach(add); }
+  });
+  ownUse.forEach(function (entry) {
+    if (parseDate(entry.date).getTime() >= cutoff) { entry.items.forEach(add); }
+  });
+  return counts;
+}
+
+function openShop() {
+  const sold = soldUnits(14);
+  shopRows = products
+    .filter(function (p) { return p.stock <= p.reorder; })
+    .map(function (p) {
+      const used = sold[normalizeBarcode(p.barcode)] || 0;
+      // enough for 2 weeks of selling, and at least double the restock level
+      const target = Math.max(used, p.reorder * 2);
+      return { barcode: p.barcode, qty: Math.max(1, target - p.stock), on: true, sold: used };
+    })
+    .sort(function (a, b) {
+      const pa = findProduct(a.barcode);
+      const pb = findProduct(b.barcode);
+      return (pa.stock - pb.stock) || (b.sold - a.sold);
+    });
+  renderShop();
+  openSheet("shop-overlay");
+}
+
+function renderShop() {
+  let html = "";
+  let total = 0;
+  let noCost = 0;
+  shopRows.forEach(function (row) {
+    const p = findProduct(row.barcode);
+    if (!p) { return; }
+    if (row.on) {
+      if (typeof p.cost === "number") { total += p.cost * row.qty; } else { noCost++; }
+    }
+    html += '<div class="product-row shop-row">' +
+      '<input type="checkbox" class="shop-check" data-barcode="' + escapeHtml(p.barcode) + '"' + (row.on ? " checked" : "") + ' aria-label="Isama">' +
+      thumbHtml(p, "small") +
+      '<div class="product-main"><div class="product-name">' + escapeHtml(p.name) + "</div>" +
+      '<div class="product-code">Stock: ' + p.stock + " &middot; nabenta (14 araw): " + row.sold + "</div></div>" +
+      '<input type="number" class="recv-qty" inputmode="numeric" min="1" data-barcode="' + escapeHtml(p.barcode) + '" value="' + row.qty + '" aria-label="Bibilhin">' +
+      "</div>";
+  });
+  if (html === "") {
+    html = '<p class="empty">Wala pang kulang ang stock.</p>';
+  }
+  byId("shop-list").innerHTML = html;
+  byId("shop-total").textContent = peso(round2(total));
+  byId("shop-hint").textContent = shopRows.length
+    ? shopRows.length + " paninda ang malapit nang maubos o ubos na. Pwede mong baguhin ang dami."
+    : "";
+  byId("shop-note").textContent = noCost ? noCost + " paninda ang walang puhunan kaya hindi kasama sa gastos." : "";
+  byId("shop-share").disabled = shopRows.filter(function (r) { return r.on; }).length === 0;
+}
+
+byId("shop-list").addEventListener("change", function (event) {
+  const check = event.target.closest(".shop-check");
+  const qty = event.target.closest(".recv-qty");
+  if (check) {
+    const row = shopRows.find(function (r) { return r.barcode === check.getAttribute("data-barcode"); });
+    if (row) { row.on = check.checked; }
+  } else if (qty) {
+    const row = shopRows.find(function (r) { return r.barcode === qty.getAttribute("data-barcode"); });
+    const n = parseInt(qty.value, 10);
+    if (row && n > 0) { row.qty = n; }
+  }
+  renderShop();
+});
+byId("shop-close").addEventListener("click", function () { closeSheet("shop-overlay"); });
+byId("shop-share").addEventListener("click", function () {
+  const lines = ["Pamilihan - " + dayLabelLong(todayText())];
+  shopRows.forEach(function (row) {
+    const p = findProduct(row.barcode);
+    if (p && row.on) { lines.push("- " + p.name + " x " + row.qty); }
+  });
+  lines.push("", "Tinatayang gastos: " + byId("shop-total").textContent);
+  shareText(lines.join("\n"));
+});
+
+
+/* ----- CSV: import and export ----- */
+let csvRows = [];                              // rows that passed the check
+const CSV_COLUMNS = ["barcode", "name", "price", "cost", "stock", "reorder", "bundle_qty", "bundle_price"];
+
+function csvCell(value) {
+  const text = value === undefined || value === null ? "" : String(value);
+  return /[",\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+}
+
+function productsToCsv() {
+  const lines = [CSV_COLUMNS.join(",")];
+  products.forEach(function (p) {
+    lines.push([
+      p.barcode, p.name, p.price, typeof p.cost === "number" ? p.cost : "", p.stock, p.reorder,
+      p.bundle ? p.bundle.qty : "", p.bundle ? p.bundle.price : ""
+    ].map(csvCell).join(","));
+  });
+  return "﻿" + lines.join("\r\n") + "\r\n";      // the first character helps Excel read the letters right
+}
+
+// Reads CSV text into rows of cells. Understands quotes, commas, semicolons and tabs.
+function parseCsv(text) {
+  text = text.replace(/^﻿/, "");
+  const firstLine = text.split(/\r?\n/)[0] || "";
+  const counts = { ",": 0, ";": 0, "\t": 0 };
+  Object.keys(counts).forEach(function (d) { counts[d] = firstLine.split(d).length - 1; });
+  const delimiter = counts[";"] > counts[","] && counts[";"] >= counts["\t"] ? ";" : (counts["\t"] > counts[","] ? "\t" : ",");
+
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') { quoted = false; }
+      else { cell += ch; }
+    } else if (ch === '"') {
+      quoted = true;
+    } else if (ch === delimiter) {
+      row.push(cell); cell = "";
+    } else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") { i++; }
+      row.push(cell); cell = "";
+      rows.push(row); row = [];
+    } else {
+      cell += ch;
+    }
+  }
+  if (cell !== "" || row.length > 0) { row.push(cell); rows.push(row); }
+  return rows.filter(function (r) { return r.some(function (c) { return c.trim() !== ""; }); });
+}
+
+// Which column is which, from the header words (English or Filipino)
+function csvColumnMap(header) {
+  const map = {};
+  const wanted = {
+    barcode: ["barcode", "code", "upc", "ean"],
+    name: ["name", "pangalan", "paninda", "product", "item", "description"],
+    price: ["price", "presyo", "srp", "retail", "selling"],
+    cost: ["cost", "puhunan", "original", "capital", "binili"],
+    stock: ["stock", "qty", "quantity", "dami"],
+    reorder: ["reorder", "restock", "low"],
+    bundleQty: ["bundleqty", "bundlequantity", "bundleilan"],
+    bundlePrice: ["bundleprice", "bundlepresyo"]
+  };
+  header.forEach(function (raw, index) {
+    const h = raw.toLowerCase().replace(/[^a-z]/g, "");
+    // check bundle and reorder first so "bundle_price" is not taken as "price"
+    ["bundleQty", "bundlePrice", "reorder", "barcode", "name", "price", "cost", "stock"].forEach(function (key) {
+      if (map[key] === undefined && wanted[key].some(function (w) { return h === w || h.indexOf(w) === 0 || (key !== "price" && key !== "stock" && h.indexOf(w) >= 0); })) {
+        if (key === "price" && h.indexOf("bundle") >= 0) { return; }
+        if (key === "stock" && h.indexOf("re") === 0) { return; }
+        map[key] = index;
+      }
+    });
+  });
+  return map;
+}
+
+function csvNumber(text) {
+  const cleaned = String(text || "").replace(/[₱,\s]/g, "").replace(/^php/i, "");
+  if (cleaned === "") { return null; }
+  const n = Number(cleaned);
+  return isNaN(n) ? NaN : n;
+}
+
+// Checks every row. Returns { news, updates, errors }
+function checkCsv(text) {
+  const rows = parseCsv(text);
+  const result = { news: [], updates: [], errors: [], problem: "" };
+  if (rows.length < 2) {
+    result.problem = "Walang laman ang file (kailangan ng header at kahit isang paninda).";
+    return result;
+  }
+  const map = csvColumnMap(rows[0]);
+  if (map.barcode === undefined || map.name === undefined || map.price === undefined) {
+    result.problem = "Hindi makita ang columns na barcode, name at price sa unang linya ng file.";
+    return result;
+  }
+  const seen = {};
+  rows.slice(1).forEach(function (cells, i) {
+    const line = i + 2;
+    const get = function (key) { return map[key] === undefined ? "" : String(cells[map[key]] === undefined ? "" : cells[map[key]]).trim(); };
+    let barcode = get("barcode").replace(/^="?|"$/g, "");
+    const name = get("name");
+    const price = csvNumber(get("price"));
+    const cost = csvNumber(get("cost"));
+    const stock = csvNumber(get("stock"));
+    const reorder = csvNumber(get("reorder"));
+    const bq = csvNumber(get("bundleQty"));
+    const bp = csvNumber(get("bundlePrice"));
+
+    function fail(reason) { result.errors.push("Linya " + line + ": " + reason); }
+    if (/^\d+(\.\d+)?e\+?\d+$/i.test(barcode)) { return fail("sira ang barcode (" + barcode + "). Gawing Text ang column sa Excel."); }
+    barcode = barcode.replace(/\.0+$/, "");
+    if (!barcode) { return fail("walang barcode."); }
+    if (!name) { return fail("walang pangalan."); }
+    if (price === null || isNaN(price) || price < 0) { return fail("mali o walang presyo."); }
+    if (cost !== null && (isNaN(cost) || cost < 0)) { return fail("mali ang cost."); }
+    if (stock !== null && (isNaN(stock) || stock < 0)) { return fail("mali ang stock."); }
+    if (reorder !== null && (isNaN(reorder) || reorder < 0)) { return fail("mali ang reorder."); }
+    if ((bq === null) !== (bp === null) || isNaN(bq) || isNaN(bp) || (bq !== null && (bq < 2 || bp < 0))) { return fail("mali ang bundle (kailangan ang bundle_qty na 2 pataas at bundle_price)."); }
+    const key = normalizeBarcode(barcode);
+    if (seen[key]) { return fail("paulit-ulit ang barcode sa file."); }
+    seen[key] = true;
+
+    const row = { barcode: barcode, name: name, price: price, cost: cost, stock: stock === null ? null : Math.round(stock), reorder: reorder === null ? null : Math.round(reorder), bundle: bq === null ? null : { qty: Math.round(bq), price: bp } };
+    if (findProduct(barcode)) { result.updates.push(row); } else { result.news.push(row); }
+  });
+  return result;
+}
+
+function resetCsv() {
+  csvRows = null;
+  byId("csv-preview").innerHTML = "";
+  byId("csv-import").disabled = true;
+  byId("csv-stock").checked = false;
+  byId("csv-file").value = "";
+}
+
+byId("csv-export").addEventListener("click", function () {
+  saveTextFile("paninda-" + todayText() + ".csv", productsToCsv(), "text/csv");
+});
+byId("csv-template").addEventListener("click", function () {
+  saveTextFile("paninda-template.csv", "﻿" + CSV_COLUMNS.join(",") + "\r\n", "text/csv");
+});
+byId("csv-pick").addEventListener("click", function () { byId("csv-file").click(); });
+byId("csv-file").addEventListener("change", function () {
+  const file = this.files && this.files[0];
+  if (!file) { return; }
+  const reader = new FileReader();
+  reader.onload = function () {
+    const result = checkCsv(String(reader.result));
+    csvRows = result;
+    let html = "";
+    if (result.problem) {
+      html = '<p class="error-text">' + escapeHtml(result.problem) + "</p>";
+    } else {
+      html = "<p><strong>" + result.news.length + "</strong> bagong paninda &middot; <strong>" + result.updates.length + "</strong> dati nang nasa listahan (i-uupdate) &middot; <strong>" + result.errors.length + "</strong> may mali</p>";
+      if (result.errors.length) {
+        html += '<ul class="csv-errors">' + result.errors.slice(0, 6).map(function (e) { return "<li>" + escapeHtml(e) + "</li>"; }).join("") +
+          (result.errors.length > 6 ? "<li>...at " + (result.errors.length - 6) + " pa</li>" : "") + "</ul>" +
+          '<p class="hint">Ang mga may mali ay hindi ii-import.</p>';
+      }
+    }
+    byId("csv-preview").innerHTML = html;
+    byId("csv-import").disabled = !!result.problem || result.news.length + result.updates.length === 0;
+  };
+  reader.readAsText(file);
+});
+byId("csv-close").addEventListener("click", function () { closeSheet("csv-overlay"); });
+byId("csv-import").addEventListener("click", function () {
+  if (!csvRows) { return; }
+  const overwriteStock = byId("csv-stock").checked;
+  csvRows.news.forEach(function (r) {
+    const p = { barcode: r.barcode, name: r.name, price: r.price, stock: r.stock === null ? 0 : r.stock, reorder: r.reorder === null ? 5 : r.reorder };
+    if (r.cost !== null) { p.cost = r.cost; }
+    if (r.bundle) { p.bundle = r.bundle; }
+    products.push(p);
+  });
+  csvRows.updates.forEach(function (r) {
+    const p = findProduct(r.barcode);
+    p.name = r.name;
+    p.price = r.price;
+    if (r.cost !== null) { p.cost = r.cost; }
+    if (r.reorder !== null) { p.reorder = r.reorder; }
+    if (r.bundle) { p.bundle = r.bundle; }
+    if (overwriteStock && r.stock !== null) { p.stock = r.stock; }
+  });
+  saveData();
+  renderAll();
+  const text = "Na-import: " + csvRows.news.length + " bago, " + csvRows.updates.length + " na-update.";
+  resetCsv();
+  closeSheet("csv-overlay");
+  alert(text);
+});
+
+
+/* ----- Sara na ang tindahan: count the drawer ----- */
+function closingNumbers() {
+  const nums = { cashSales: 0, payments: 0, walletIn: 0, walletOut: 0 };
+  dayEvents(todayText()).forEach(function (event) {
+    const d = event.data;
+    if (event.kind === "sale" && !d.utang) {
+      nums.cashSales += d.total;
+    } else if (event.kind === "payment") {
+      nums.payments += d.amount;
+    } else if (event.kind === "wallet" && typeof d.cashDelta === "number") {
+      if (d.cashDelta >= 0) { nums.walletIn += d.cashDelta; } else { nums.walletOut += d.cashDelta; }
+    }
+  });
+  Object.keys(nums).forEach(function (k) { nums[k] = round2(nums[k]); });
+  nums.expected = round2(nums.cashSales + nums.payments + nums.walletIn + nums.walletOut);
+  return nums;
+}
+
+function lastClosing() {
+  const list = settings.closings || [];
+  return list.length ? list[list.length - 1] : null;
+}
+
+function openClose() {
+  const last = lastClosing();
+  byId("close-date").textContent = dayLabelLong(todayText());
+  byId("close-start").value = last && typeof last.counted === "number" ? last.counted : "";
+  byId("close-counted").value = "";
+  byId("close-gcash").value = "";
+  byId("close-maya").value = "";
+  renderClose();
+  openSheet("close-overlay");
+}
+
+function closeStart() {
+  const n = parseFloat(byId("close-start").value);
+  return isNaN(n) ? 0 : n;
+}
+
+function diffWords(diff) {
+  if (Math.abs(diff) < 0.005) { return { text: "Eksakto", cls: "ok" }; }
+  return diff > 0 ? { text: "Sobra " + peso(diff), cls: "ok" } : { text: "Kulang " + peso(-diff), cls: "short" };
+}
+
+function renderClose() {
+  const n = closingNumbers();
+  const expected = round2(closeStart() + n.expected);
+  const rows = [
+    ["Panimulang cash", closeStart()],
+    ["+ Benta (cash)", n.cashSales],
+    ["+ Bayad sa utang", n.payments],
+    ["+ GCash/Maya cash in", n.walletIn],
+    ["&minus; GCash/Maya cash out", n.walletOut]
+  ];
+  byId("close-rows").innerHTML = rows.map(function (r) {
+    return '<div class="sum-row"><span>' + r[0] + "</span><strong>" + peso(r[1]) + "</strong></div>";
+  }).join("") + '<div class="sum-row total-row"><span>Dapat na nasa drawer</span><strong>' + peso(expected) + "</strong></div>";
+
+  const counted = parseFloat(byId("close-counted").value);
+  const diffBox = byId("close-diff");
+  if (isNaN(counted)) {
+    diffBox.className = "change-row";
+    diffBox.innerHTML = "<span>Kulang / Sobra</span><strong>&ndash;</strong>";
+  } else {
+    const w = diffWords(round2(counted - expected));
+    diffBox.className = "change-row diff-" + w.cls;
+    diffBox.innerHTML = "<span>Kulang / Sobra</span><strong>" + w.text + "</strong>";
+  }
+
+  const gc = parseFloat(byId("close-gcash").value);
+  const mc = parseFloat(byId("close-maya").value);
+  const parts = [];
+  if (!isNaN(gc)) { parts.push("GCash: " + diffWords(round2(gc - ewallet.gcash.balance)).text + " (dapat " + peso(ewallet.gcash.balance) + ")"); }
+  if (!isNaN(mc)) { parts.push("Maya: " + diffWords(round2(mc - ewallet.maya.balance)).text + " (dapat " + peso(ewallet.maya.balance) + ")"); }
+  byId("close-wallet-diff").textContent = parts.join("  ·  ") || "Ilagay ang balance sa app para ma-check kung tugma sa record.";
+
+  const history = (settings.closings || []).slice(-7).reverse();
+  byId("close-history").innerHTML = history.length ? history.map(function (c) {
+    const w = diffWords(c.diff);
+    return '<div class="txn"><div class="txn-head"><span class="txn-time">' + escapeHtml(dayLabelLong(c.date)) + "</span>" +
+      '<span class="txn-total diff-text-' + w.cls + '">' + w.text + "</span></div>" +
+      '<div class="txn-pay">Nabilang ' + peso(c.counted) + " &middot; dapat " + peso(c.expected) + "</div></div>";
+  }).join("") : '<p class="empty">Wala pang closing.</p>';
+}
+
+byId("close-btn").addEventListener("click", openClose);
+["close-start", "close-counted", "close-gcash", "close-maya"].forEach(function (id) {
+  byId(id).addEventListener("input", renderClose);
+});
+byId("close-cancel").addEventListener("click", function () { closeSheet("close-overlay"); });
+byId("close-save").addEventListener("click", function () {
+  const counted = parseFloat(byId("close-counted").value);
+  if (isNaN(counted)) {
+    alert("Ilagay muna ang nabilang na cash sa drawer.");
+    return;
+  }
+  const n = closingNumbers();
+  const expected = round2(closeStart() + n.expected);
+  if (!Array.isArray(settings.closings)) { settings.closings = []; }
+  // one closing per day: saving again replaces the earlier one
+  settings.closings = settings.closings.filter(function (c) { return c.date !== todayText(); });
+  settings.closings.push({
+    date: todayText(), ts: Date.now(), start: closeStart(), expected: expected,
+    counted: round2(counted), diff: round2(counted - expected)
+  });
+  settings.closings = settings.closings.slice(-60);
+  saveData();
+  renderClose();
+  const w = diffWords(round2(counted - expected));
+  alert("Na-save ang closing: " + w.text + ". Bukas, " + peso(counted) + " ang magiging panimulang cash.");
+  closeSheet("close-overlay");
+});
+
+
+/* ----- 7 Days: chart and best sellers ----- */
+let chartMetric = "total";                     // "total" (benta) or "profit" (kita)
+
+function renderWeekExtras(dates) {
+  const today = todayText();
+  const values = dates.map(function (date) { return dayStats(date)[chartMetric]; });
+  const max = Math.max.apply(null, values.concat([1]));
+  byId("week-chart").innerHTML = dates.map(function (date, i) {
+    const v = values[i];
+    const height = v > 0 ? Math.max(4, Math.round((v / max) * 100)) : 2;
+    const weekday = parseDate(date).toLocaleDateString("en-US", { weekday: "short" });
+    return '<button type="button" class="chart-col' + (date === weekDate ? " active" : "") + (date === today ? " is-today" : "") + '" data-date="' + date + '">' +
+      '<span class="chart-val">' + (v > 0 ? pesoCompact(v) : "&ndash;") + "</span>" +
+      '<span class="chart-track"><span class="chart-bar" style="height:' + height + '%"></span></span>' +
+      '<span class="chart-day">' + weekday + "</span></button>";
+  }).join("");
+  byId("chart-total").classList.toggle("active", chartMetric === "total");
+  byId("chart-profit").classList.toggle("active", chartMetric === "profit");
+
+  // best sellers of the 7 days
+  const totals = {};
+  sales.forEach(function (sale) {
+    if (dates.indexOf(sale.date) < 0) { return; }
+    sale.items.forEach(function (item) {
+      const key = normalizeBarcode(item.barcode);
+      if (!totals[key]) { totals[key] = { name: item.name, barcode: item.barcode, qty: 0, money: 0, profit: 0, known: false }; }
+      const t = totals[key];
+      t.qty += item.qty;
+      t.money += lineTotal(item);
+      const cost = itemCost(item);
+      if (cost !== null) { t.profit += lineTotal(item) - cost * item.qty; t.known = true; }
+    });
+  });
+  const best = Object.keys(totals).map(function (k) { return totals[k]; })
+    .sort(function (a, b) { return (b.qty - a.qty) || (b.money - a.money); })
+    .slice(0, 5);
+  byId("week-best").innerHTML = best.length ? best.map(function (t, i) {
+    const p = findProduct(t.barcode) || { name: t.name };
+    return '<div class="product-row best-row"><span class="rank">' + (i + 1) + "</span>" + thumbHtml(p, "small") +
+      '<div class="product-main"><div class="product-name">' + escapeHtml(t.name) + "</div>" +
+      '<div class="product-code">' + t.qty + " piraso &middot; benta " + peso(round2(t.money)) + "</div></div>" +
+      (t.known ? '<div class="product-nums"><div class="product-profit">Kita ' + peso(round2(t.profit)) + "</div></div>" : "") +
+      "</div>";
+  }).join("") : '<p class="empty">Wala pang benta sa nakaraang 7 araw.</p>';
+}
+
+byId("chart-total").addEventListener("click", function () { chartMetric = "total"; renderWeek(); });
+byId("chart-profit").addEventListener("click", function () { chartMetric = "profit"; renderWeek(); });
+byId("week-chart").addEventListener("click", function (event) {
+  const col = event.target.closest(".chart-col");
+  if (col) { weekDate = col.getAttribute("data-date"); renderWeek(); }
+});
+
+
+/* ----- Utang: who has not paid for a long time ----- */
+const STALE_DAYS = 14;
+let staleOnly = false;
+
+// Days since the last payment (or since the first utang, if the person never paid)
+function debtStaleDays(person) {
+  if (person.balance <= 0) { return 0; }
+  let since = 0;
+  person.entries.forEach(function (e) {
+    if (e.type === "payment") { since = Math.max(since, e.ts || 0); }
+  });
+  if (!since) {
+    person.entries.forEach(function (e) {
+      if (e.type === "charge" && e.ts && (!since || e.ts < since)) { since = e.ts; }
+    });
+  }
+  return since ? Math.floor((Date.now() - since) / 86400000) : 0;
+}
+
+byId("debt-stale-btn").addEventListener("click", function () { staleOnly = !staleOnly; renderUtang(); });
+byId("debt-remind").addEventListener("click", function () {
+  const person = findDebtPerson();
+  if (!person || person.balance <= 0) { return; }
+  const store = (settings.storeName || "").trim() || "tindahan";
+  shareText("Magandang araw po, " + person.name + "! Paalala lang po sa utang ninyo na " + peso(person.balance) +
+    " sa " + store + ". Salamat po!");
+});
 
 
 /* ---------- 13. RUNS WHEN THE PAGE OPENS ---------- */
