@@ -937,11 +937,3 @@ h3.sub { font-size: 15px; margin: 16px 0 6px; color: var(--text); }
 .chart-day { font-size: 11px; font-weight: 700; color: var(--muted); }
 .best-row .rank { width: 26px; height: 26px; border-radius: 50%; background: var(--soft); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex: none; }
 .stale-days { font-size: 11px; font-weight: 700; color: var(--danger); }
-
-/* Product groups and persistent scan confirmation */
-.category-heading { grid-column: 1 / -1; margin: 14px 0 0; padding: 8px 2px 4px; border-bottom: 1px solid var(--border); font-size: 15px; font-weight: 700; }
-.scanner-product { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 14px; border-radius: 12px; background: #fff; color: #17171a; font-size: 17px; }
-.scanner-product[hidden] { display: none; }
-.scanner-product strong { min-width: 0; }
-.scanner-product span { flex: none; font-size: 21px; font-weight: 800; }
-#wallet-settings-heading, #wallet-settings-panel, #wallet-overlay, #close-wallet-heading, #close-wallet-fields, #close-wallet-diff { display: none !important; }
