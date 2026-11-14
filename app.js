@@ -28,7 +28,7 @@ const SETTINGS_KEY = "pos_settings";      // on/off switches
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
 const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "", closings: [] };
 const BEST_COUNT = 10;
-const APP_VERSION = "v14 - Nov 13";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v15 - Nov 14";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // ----- Icons: simple line icons (instead of emojis). icon("trash") gives the picture as HTML. -----
 const ICONS = {
@@ -452,7 +452,7 @@ function renderTiles() {
 
   let list = products
     .filter(function (p) {
-      return query === "" || p.name.toLowerCase().includes(query) || p.barcode.includes(query);
+      return query === "" || p.name.toLowerCase().includes(query) || p.barcode.includes(query) || (p.category || "").toLowerCase().includes(query);
     })
     .sort(function (a, b) {
       return (sold[b.barcode] || 0) - (sold[a.barcode] || 0) || a.name.localeCompare(b.name);
@@ -475,7 +475,11 @@ function renderTiles() {
   }
 
   let html = "";
-  list.forEach(function (p) {
+  const groups = {};
+  list.forEach(function (p) { const category = String(p.category || "Iba pa").trim() || "Iba pa"; (groups[category] = groups[category] || []).push(p); });
+  Object.keys(groups).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (category) {
+    html += '<h3 class="category-heading">' + escapeHtml(category) + '</h3>';
+    groups[category].forEach(function (p) {
     const inCart = cart.find(function (i) { return i.barcode === p.barcode; });
     const qty = inCart ? inCart.qty : 0;
     const soldOut = p.stock - qty <= 0;
@@ -492,6 +496,7 @@ function renderTiles() {
       "</span>" +
       (qty > 0 ? '<span class="tile-badge">' + qty + "</span>" : "") +
       "</button>";
+    });
   });
 
   if (list.length === 0) {
@@ -1132,6 +1137,8 @@ function beep(good) {
 
 function setScannerStatus(text) {
   document.getElementById("scanner-status").textContent = text;
+  const box = document.getElementById("scanner-product");
+  if (box && !text) { box.hidden = true; box.innerHTML = ""; }
 }
 
 // The barcode kinds found on store products
@@ -1153,6 +1160,7 @@ async function openScanner(mode) {
   lastScanCode = "";
   unlockAudio();
   document.getElementById("scanner-overlay").hidden = false;
+  showScannedProduct(null);
   setScannerStatus("Binubuksan ang camera...");
 
   try {
@@ -1262,6 +1270,7 @@ async function stopLive() {
 async function closeScanner() {
   await stopLive();
   document.getElementById("scanner-overlay").hidden = true;
+  showScannedProduct(null);
 }
 
 // Called by the library each time it reads a barcode. force = skip the "same barcode again" check.
@@ -1293,6 +1302,12 @@ function onScanSuccess(code, force) {
   const result = addToCart(code);
   beep(result.ok);
   setScannerStatus(result.text);
+  const scannedProduct = findProduct(code);
+  const resultBox = document.getElementById("scanner-product");
+  if (resultBox) {
+    resultBox.hidden = !(result.ok && scannedProduct);
+    resultBox.innerHTML = result.ok && scannedProduct ? "<strong>" + escapeHtml(scannedProduct.name) + "</strong><span>" + peso(scannedProduct.price) + "</span>" : "";
+  }
 }
 
 document.getElementById("camera-btn").addEventListener("click", function () { openScanner("sell"); });
@@ -1333,6 +1348,8 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
     stock: parseInt(document.getElementById("new-stock").value, 10),
     reorder: reorder
   };
+  const category = document.getElementById("new-category").value.trim();
+  if (category) newProduct.category = category;
   const cost = parseFloat(document.getElementById("new-cost").value);
   if (!isNaN(cost) && cost >= 0) {
     newProduct.cost = cost;               // puhunan: what we paid for it
@@ -1412,6 +1429,7 @@ function openEdit(barcode) {
   editPhoto = product.photo || "";
   showPhotoField("edit", editPhoto, product.name);
   document.getElementById("edit-name").value = product.name;
+  document.getElementById("edit-category").value = product.category || "";
   document.getElementById("edit-barcode").value = product.barcode;
   document.getElementById("edit-price").value = product.price;
   document.getElementById("edit-cost").value = typeof product.cost === "number" ? product.cost : "";
@@ -1469,6 +1487,8 @@ function saveEdit() {
     delete product.bundle;
   }
   product.name = document.getElementById("edit-name").value.trim();
+  const category = document.getElementById("edit-category").value.trim();
+  if (category) { product.category = category; } else { delete product.category; }
   product.barcode = newBarcode;
   product.price = parseFloat(document.getElementById("edit-price").value);
   if (costText === "") {

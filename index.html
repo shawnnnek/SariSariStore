@@ -41,20 +41,23 @@
       </form>
       <p id="message" class="message" role="status"></p>
       <button type="button" id="last-receipt-btn" class="receipt-btn" hidden><i data-icon="receipt"></i>Resibo ng huling benta</button>
+      <h2 id="cart-title">Benta ngayon</h2>
 
-      <h2>GCash &amp; Maya</h2>
-      <div class="wallet-row">
-        <button type="button" class="wallet-tile gcash" data-wallet="gcash">
-          <span class="wallet-name">GCash</span>
-          <span class="wallet-bal" id="bal-gcash">₱0.00</span>
-          <span class="wallet-sub">Tap for cash in / out</span>
-        </button>
-        <button type="button" class="wallet-tile maya" data-wallet="maya">
-          <span class="wallet-name">Maya</span>
-          <span class="wallet-bal" id="bal-maya">₱0.00</span>
-          <span class="wallet-sub">Tap for cash in / out</span>
-        </button>
-      </div>
+      <!-- ON = the items in the list are taken for ourselves: stock goes down, but no sale and no profit -->
+      <label class="switch-row own-row" for="own-toggle">
+        <span class="switch-text">
+          <span class="switch-title">Para samen</span>
+          <span class="switch-note">Kukunin namin. Mababawas sa stock, wala sa benta at kita.</span>
+        </span>
+        <span class="switch">
+          <input type="checkbox" id="own-toggle" role="switch">
+          <span class="switch-track"><span class="switch-knob"></span></span>
+          <span id="own-state" class="switch-state">OFF</span>
+        </span>
+      </label>
+
+      <ul id="cart-list" class="cart-list"></ul>
+
 
       <h2>Tap ang paninda</h2>
 
@@ -74,22 +77,6 @@
       <input type="search" id="search-input" placeholder="Hanapin ang paninda" aria-label="Hanapin ang paninda">
       <div id="tile-grid" class="tile-grid"></div>
 
-      <h2 id="cart-title">Benta ngayon</h2>
-
-      <!-- ON = the items in the list are taken for ourselves: stock goes down, but no sale and no profit -->
-      <label class="switch-row own-row" for="own-toggle">
-        <span class="switch-text">
-          <span class="switch-title">Para samen</span>
-          <span class="switch-note">Kukunin namin. Mababawas sa stock, wala sa benta at kita.</span>
-        </span>
-        <span class="switch">
-          <input type="checkbox" id="own-toggle" role="switch">
-          <span class="switch-track"><span class="switch-knob"></span></span>
-          <span id="own-state" class="switch-state">OFF</span>
-        </span>
-      </label>
-
-      <ul id="cart-list" class="cart-list"></ul>
     </section>
 
     <!-- ============ TODAY TAB ============ -->
@@ -201,6 +188,7 @@
 
         <label for="new-name">Pangalan ng paninda</label>
         <input type="text" id="new-name" required>
+        <label for="new-category">Kategorya</label><input type="text" id="new-category" list="product-categories" placeholder="Hal. Canned foods, Body wash, Detergent"><datalist id="product-categories"></datalist>
 
         <div class="two-col">
           <div>
@@ -288,8 +276,8 @@
         <p id="voice-info" class="hint"></p>
       </div>
 
-      <h2>GCash &amp; Maya settings</h2>
-      <div class="add-form">
+      <h2 id="wallet-settings-heading">GCash &amp; Maya settings</h2>
+      <div id="wallet-settings-panel" class="add-form">
         <label for="set-gcash-numbers">GCash number(s)</label>
         <input type="text" id="set-gcash-numbers" inputmode="tel" autocomplete="off" placeholder="Separate several numbers with commas">
         <label for="set-gcash-balance">GCash balance now (₱)</label>
@@ -463,6 +451,7 @@
 
       <label for="edit-name">Pangalan ng paninda</label>
       <input type="text" id="edit-name" required>
+      <label for="edit-category">Kategorya</label><input type="text" id="edit-category" list="product-categories" placeholder="Hal. Canned foods, Body wash, Detergent">
 
       <label>Larawan (para madaling makilala)</label>
       <div class="photo-field">
@@ -612,8 +601,8 @@
       <input type="number" id="close-counted" inputmode="decimal" min="0" step="0.01" placeholder="Bilangin ang pera">
       <div id="close-diff" class="change-row"></div>
 
-      <h3 class="sub">GCash at Maya (optional)</h3>
-      <div class="two-col">
+      <h3 id="close-wallet-heading" class="sub">GCash at Maya (optional)</h3>
+      <div id="close-wallet-fields" class="two-col">
         <div>
           <label for="close-gcash">Balance sa GCash app</label>
           <input type="number" id="close-gcash" inputmode="decimal" min="0" step="0.01">
@@ -658,7 +647,7 @@
         <input type="range" id="zoom-slider" min="1" max="3" step="0.1" value="1" aria-label="Zoom">
         <span id="zoom-value">1x</span>
       </div>
-      <p id="scanner-status" class="scanner-status"></p>
+      <p id="scanner-status" class="scanner-status"></p><div id="scanner-product" class="scanner-product" aria-live="polite" hidden></div>
     </div>
   </div>
 
