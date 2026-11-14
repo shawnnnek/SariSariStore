@@ -18,9 +18,8 @@ const DEFAULT_PRODUCTS = [
 const PRODUCTS_KEY = "pos_products";
 const SALES_KEY = "pos_sales";
 const LAST_BACKUP_KEY = "pos_last_backup";
+try { localStorage.removeItem("pos_ewallet"); localStorage.removeItem("pos_ewallet_tx"); } catch (error) {}
 
-const EWALLET_KEY = "pos_ewallet";        // GCash / Maya balances and settings
-const EWALLET_TX_KEY = "pos_ewallet_tx";  // every GCash / Maya cash in, cash out and balance change
 const LEDGER_KEY = "pos_utang";           // utang: charges and payments
 const OWN_KEY = "pos_own";                // items taken "para samen" (for ourselves)
 const SETTINGS_KEY = "pos_settings";      // on/off switches
@@ -28,7 +27,7 @@ const SETTINGS_KEY = "pos_settings";      // on/off switches
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
 const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "", closings: [] };
 const BEST_COUNT = 10;
-const APP_VERSION = "v14 - Nov 13";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v17 - Nov 14";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // ----- Icons: simple line icons (instead of emojis). icon("trash") gives the picture as HTML. -----
 const ICONS = {
@@ -70,26 +69,16 @@ function drawIcons() {
   });
 }
 
-// Starting values for GCash / Maya. Your numbers are typed in the app (Products tab),
-// NOT written here, because this code is public on GitHub.
-const DEFAULT_EWALLET = {
-  gcash: { numbers: "", balance: 0 },
-  maya:  { numbers: "", balance: 0 },
-  cashOutFee: "deduct"
-};
-
 // Variables that hold the data while the page is open.
 let products = loadData(PRODUCTS_KEY, DEFAULT_PRODUCTS);
 let sales = loadData(SALES_KEY, []);   // finished sales
 let cart = [];                          // items in the sale happening right now
-let ewallet = loadData(EWALLET_KEY, DEFAULT_EWALLET);
-let ewalletTx = loadData(EWALLET_TX_KEY, []);
 let ledger = loadData(LEDGER_KEY, []);
 let ownUse = loadData(OWN_KEY, []);      // "para samen": stock goes down, but it is not a sale and has no profit
 let settings = Object.assign({}, DEFAULT_SETTINGS, loadData(SETTINGS_KEY, DEFAULT_SETTINGS));
 let lastSale = null;                     // the newest finished sale (for the receipt button)
 let ownMode = false;                     // true while the Para samen switch is ON (not saved)
-normalizeEwallet();
+
 
 
 /* ---------- 2. SAVING AND LOADING ---------- */
@@ -112,8 +101,6 @@ function saveData() {
   try {
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
     localStorage.setItem(SALES_KEY, JSON.stringify(sales));
-    localStorage.setItem(EWALLET_KEY, JSON.stringify(ewallet));
-    localStorage.setItem(EWALLET_TX_KEY, JSON.stringify(ewalletTx));
     localStorage.setItem(LEDGER_KEY, JSON.stringify(ledger));
     localStorage.setItem(OWN_KEY, JSON.stringify(ownUse));
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -124,6 +111,8 @@ function saveData() {
 
 
 /* ---------- 3. HELPER FUNCTIONS ---------- */
+function byId(id) { return document.getElementById(id); }
+function round2(n) { return Math.round(n * 100) / 100; }
 
 // Turn 12 into "₱12.00"
 function peso(amount) {
@@ -452,7 +441,7 @@ function renderTiles() {
 
   let list = products
     .filter(function (p) {
-      return query === "" || p.name.toLowerCase().includes(query) || p.barcode.includes(query);
+      return query === "" || p.name.toLowerCase().includes(query) || p.barcode.includes(query) || (p.category || "").toLowerCase().includes(query);
     })
     .sort(function (a, b) {
       return (sold[b.barcode] || 0) - (sold[a.barcode] || 0) || a.name.localeCompare(b.name);
@@ -475,7 +464,11 @@ function renderTiles() {
   }
 
   let html = "";
-  list.forEach(function (p) {
+  const groups = {};
+  list.forEach(function (p) { const category = String(p.category || "Iba pa").trim() || "Iba pa"; (groups[category] = groups[category] || []).push(p); });
+  Object.keys(groups).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (category) {
+    html += '<h3 class="category-heading">' + escapeHtml(category) + '</h3>';
+    groups[category].forEach(function (p) {
     const inCart = cart.find(function (i) { return i.barcode === p.barcode; });
     const qty = inCart ? inCart.qty : 0;
     const soldOut = p.stock - qty <= 0;
@@ -492,6 +485,7 @@ function renderTiles() {
       "</span>" +
       (qty > 0 ? '<span class="tile-badge">' + qty + "</span>" : "") +
       "</button>";
+    });
   });
 
   if (list.length === 0) {
@@ -586,18 +580,13 @@ function renderSummary() {
 }
 
 // Everything that happened on one day (like "2026-11-09"), newest first:
-// product sales, GCash/Maya, utang payments received, wallet balance changes, and Para samen.
+// product sales, utang payments received, and Para samen.
 function dayEvents(dateString) {
   const events = [];
 
   sales.forEach(function (sale, index) {
     if (sale.date === dateString) {
       events.push({ kind: "sale", ts: sale.ts || 0, order: index, data: sale });
-    }
-  });
-  ewalletTx.forEach(function (tx, index) {
-    if (tx.date === dateString) {
-      events.push({ kind: tx.type === "adjust" ? "adjust" : "wallet", ts: tx.ts || 0, order: index, data: tx });
     }
   });
   ledger.forEach(function (entry, index) {
@@ -651,15 +640,14 @@ function saleProfit(sale) {
 }
 
 // The numbers of one day.
-// Total = sales paid in cash + GCash/Maya fees + utang payments received.
+// Total = sales paid in cash + utang payments received.
 // Sales charged to utang are NOT in the total until the person pays.
-// Kita (profit) = profit on the products + GCash/Maya fees. Para samen is not in it.
+// Kita (profit) = profit on the products. Para samen is not in it.
 function dayStats(dateString) {
   const stats = {
-    total: 0, count: 0, items: 0, fees: 0, cashIn: 0, cashOut: 0, utangCharged: 0,
+    total: 0, count: 0, items: 0, utangCharged: 0,
     profitItems: 0, profitUtang: 0, noCost: 0, ownItems: 0, ownCost: 0, profit: 0
   };
-
   dayEvents(dateString).forEach(function (event) {
     const d = event.data;
     if (event.kind === "sale") {
@@ -674,11 +662,6 @@ function dayStats(dateString) {
       } else {
         stats.total += d.total;
       }
-    } else if (event.kind === "wallet") {
-      stats.count++;
-      stats.fees += d.fee;
-      stats.total += d.fee;
-      if (d.type === "in") { stats.cashIn += d.amount; } else { stats.cashOut += d.amount; }
     } else if (event.kind === "payment") {
       stats.count++;
       stats.total += d.amount;
@@ -690,21 +673,17 @@ function dayStats(dateString) {
       });
     }
   });
-
-  stats.profit = stats.profitItems + stats.fees;
-  Object.keys(stats).forEach(function (key) {
-    stats[key] = round2(stats[key]);
-  });
+  stats.profit = stats.profitItems;
+  Object.keys(stats).forEach(function (key) { stats[key] = round2(stats[key]); });
   return stats;
 }
-
 function todayStats() {
   return dayStats(todayText());
 }
 
 // Notes under the profit boxes (the same words for Today and for the 7 Days page)
 function profitNotes(stats) {
-  let text = "Kita = benta \u2212 puhunan + GCash/Maya fees.";
+  let text = "Kita = benta \u2212 puhunan.";
   if (stats.profitUtang > 0) {
     text += " Kasama ang kita sa utang na hindi pa bayad (" + peso(stats.profitUtang) + ").";
   }
@@ -727,55 +706,29 @@ function ownNotes(stats) {
 // showDay = also write the day, like "Mon, Nov 9".
 function txnHtml(events, showDay, emptyText) {
   let html = "";
-
   events.forEach(function (event) {
     const before = html.length;
     const d = event.data;
     const when = (showDay ? escapeHtml(dayLabel(d.date)) + " &middot; " : "") + escapeHtml(d.time);
-
     if (event.kind === "sale") {
       let lines = "";
       d.items.forEach(function (item) {
-        lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span>" +
-          '<span class="line-amount">' + peso(lineTotal(item)) + "</span></li>";
+        lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span>" + '<span class="line-amount">' + peso(lineTotal(item)) + "</span></li>";
       });
-
       const parts = [];
       let tag = '<span class="tag sale">SALE</span>';
       if (d.utang) {
         tag = '<span class="tag utang">UTANG &middot; ' + escapeHtml(d.utang.name) + "</span>";
         parts.push("Nasa utang" + (d.utang.takenBy ? " &middot; kumuha: " + escapeHtml(d.utang.takenBy) : ""));
       } else if (typeof d.cash === "number") {
-        // older sales may not have cash/change saved
         parts.push("Cash " + peso(d.cash) + " &middot; Sukli " + peso(d.change));
       }
       const sp = saleProfit(d);
-      if (sp.known > 0) {
-        parts.push("Kita " + peso(sp.profit));
-      }
+      if (sp.known > 0) { parts.push("Kita " + peso(sp.profit)); }
       const pay = parts.length ? '<div class="txn-pay">' + parts.join(" &middot; ") + "</div>" : "";
-
-      html += '<div class="txn ' + (d.utang ? "k-utang" : "k-sale") + '">' +
-        '<div class="txn-head"><span class="txn-time">' + when + tag + "</span>" +
-        '<span class="txn-total">' + peso(d.total) + "</span></div>" +
-        '<ul class="txn-items">' + lines + "</ul>" + pay + "</div>";
-
-    } else if (event.kind === "wallet") {
-      const label = WALLET_NAMES[d.wallet] + " &middot; " + (d.type === "in" ? "Cash in" : "Cash out");
-      const cashText = d.cashDelta >= 0
-        ? "Customer gave " + peso(d.cashDelta)
-        : "Gave customer " + peso(-d.cashDelta);
-      html += '<div class="txn k-' + d.wallet + '">' +
-        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag ' + d.wallet + '">' + label + "</span></span>" +
-        '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
-        '<div class="txn-pay">Fee ' + peso(d.fee) + " &middot; " + cashText + "</div></div>";
-
+      html += '<div class="txn ' + (d.utang ? "k-utang" : "k-sale") + '">' + '<div class="txn-head"><span class="txn-time">' + when + tag + "</span>" + '<span class="txn-total">' + peso(d.total) + "</span></div>" + '<ul class="txn-items">' + lines + "</ul>" + pay + "</div>";
     } else if (event.kind === "payment") {
-      html += '<div class="txn k-utang">' +
-        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag utang">BAYAD SA UTANG</span></span>' +
-        '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
-        '<div class="txn-pay">Galing kay ' + escapeHtml(d.name) + "</div></div>";
-
+      html += '<div class="txn k-utang">' + '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag utang">BAYAD SA UTANG</span></span>' + '<span class="txn-total">' + peso(d.amount) + "</span></div>" + '<div class="txn-pay">Galing kay ' + escapeHtml(d.name) + "</div></div>";
     } else if (event.kind === "own") {
       let lines = "";
       let costTotal = 0;
@@ -784,39 +737,18 @@ function txnHtml(events, showDay, emptyText) {
         const cost = itemCost(item);
         if (cost !== null) { costTotal += cost * item.qty; }
       });
-      const note = costTotal > 0
-        ? "Puhunan " + peso(round2(costTotal)) + " &middot; hindi kasama sa kita"
-        : "Hindi kasama sa benta at kita";
-      html += '<div class="txn k-own">' +
-        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag own">PARA SAMEN</span></span>' +
-        '<span class="txn-total"></span></div>' +
-        '<ul class="txn-items">' + lines + "</ul>" +
-        '<div class="txn-pay">' + note + "</div></div>";
-
-    } else if (event.kind === "adjust") {
-      html += '<div class="txn muted k-' + d.wallet + '">' +
-        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag">' + WALLET_NAMES[d.wallet] + " balance changed</span></span>" +
-        '<span class="txn-pay">' + (d.walletDelta >= 0 ? "+" : "&minus;") + peso(Math.abs(d.walletDelta)) + "</span></div>" +
-        '<div class="txn-pay">New balance ' + peso(d.balanceAfter) + "</div></div>";
+      const note = costTotal > 0 ? "Puhunan " + peso(round2(costTotal)) + " &middot; hindi kasama sa kita" : "Hindi kasama sa benta at kita";
+      html += '<div class="txn k-own">' + '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag own">PARA SAMEN</span></span><span class="txn-total"></span></div>' + '<ul class="txn-items">' + lines + "</ul>" + '<div class="txn-pay">' + note + "</div></div>";
     }
-
-    // buttons under each entry: Resibo (sales only) and Burahin (undo)
-    if (["sale", "wallet", "payment", "own"].indexOf(event.kind) >= 0) {
+    if (["sale", "payment", "own"].indexOf(event.kind) >= 0) {
       const block = html.slice(before);
       const attrs = ' data-kind="' + event.kind + '" data-order="' + event.order + '"';
-      const buttons = '<div class="txn-actions">' +
-        (event.kind === "sale" ? '<button type="button" class="txn-btn" data-act="receipt"' + attrs + ">"+icon("receipt")+"Resibo</button>" : "") +
-        '<button type="button" class="txn-btn undo" data-act="undo"' + attrs + ">"+icon("trash")+"Burahin</button></div>";
+      const buttons = '<div class="txn-actions">' + (event.kind === "sale" ? '<button type="button" class="txn-btn" data-act="receipt"' + attrs + ">"+icon("receipt")+"Resibo</button>" : "") + '<button type="button" class="txn-btn undo" data-act="undo"' + attrs + ">"+icon("trash")+"Burahin</button></div>";
       html = html.slice(0, before) + block.slice(0, -6) + buttons + "</div>";
     }
   });
-
-  if (html === "") {
-    html = '<p class="empty">' + emptyText + "</p>";
-  }
-  return html;
+  return html || '<p class="empty">' + emptyText + "</p>";
 }
-
 // The Today tab
 function renderToday() {
   const stats = todayStats();
@@ -824,11 +756,8 @@ function renderToday() {
   document.getElementById("stat-count").textContent = stats.count;
   document.getElementById("stat-items").textContent = stats.items;
   // whole pesos are shown without ".00" so the small boxes stay readable
-  document.getElementById("stat-fees").textContent = pesoShort(stats.fees);
-  document.getElementById("stat-cashin").textContent = pesoShort(stats.cashIn);
-  document.getElementById("stat-cashout").textContent = pesoShort(stats.cashOut);
   document.getElementById("stat-hint").textContent =
-    "Total = cash sales + GCash/Maya fees + bayad sa utang." +
+    "Total = cash sales + bayad sa utang." +
     (stats.utangCharged > 0 ? " Nasa utang ngayon (" + peso(stats.utangCharged) + ") ay wala pa sa total." : "");
 
   document.getElementById("stat-profit").textContent = peso(stats.profit);
@@ -882,9 +811,7 @@ function renderWeek() {
   document.getElementById("wk-total").textContent = peso(stats.total);
   document.getElementById("wk-count").textContent = stats.count;
   document.getElementById("wk-items").textContent = stats.items;
-  document.getElementById("wk-profit").textContent = peso(stats.profit);
-  document.getElementById("wk-fees").textContent = pesoShort(stats.fees);
-  document.getElementById("wk-hint").textContent = (profitNotes(stats) + " " + ownNotes(stats)).trim();
+  document.getElementById("wk-profit").textContent = peso(stats.profit);  document.getElementById("wk-hint").textContent = (profitNotes(stats) + " " + ownNotes(stats)).trim();
   document.getElementById("week-list").innerHTML = txnHtml(dayEvents(weekDate), true, "Walang transactions sa araw na ito.");
   renderWeekExtras(dates);
 }
@@ -900,7 +827,6 @@ document.getElementById("day-strip").addEventListener("click", function (event) 
 function renderAll() {
   renderSell();
   renderProducts();
-  renderWallets();
   renderUtang();
   renderSummary();
   renderToday();
@@ -930,7 +856,6 @@ function showView(name) {
     renderUtang();
   }
   if (name === "products") {
-    fillWalletSettings();
   }
   window.scrollTo(0, 0);
 }
@@ -1132,8 +1057,16 @@ function beep(good) {
 
 function setScannerStatus(text) {
   document.getElementById("scanner-status").textContent = text;
+  const box = document.getElementById("scanner-product");
+  if (box && !text) { box.hidden = true; box.innerHTML = ""; }
 }
 
+function showScannedProduct(product) {
+  const box = document.getElementById("scanner-product");
+  if (!box) { return; }
+  box.hidden = !product;
+  box.innerHTML = product ? "<strong>" + escapeHtml(product.name) + "</strong><span>" + peso(product.price) + "</span>" : "";
+}
 // The barcode kinds found on store products
 const SCAN_FORMAT_NAMES = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"];
 
@@ -1153,6 +1086,7 @@ async function openScanner(mode) {
   lastScanCode = "";
   unlockAudio();
   document.getElementById("scanner-overlay").hidden = false;
+  showScannedProduct(null);
   setScannerStatus("Binubuksan ang camera...");
 
   try {
@@ -1262,6 +1196,7 @@ async function stopLive() {
 async function closeScanner() {
   await stopLive();
   document.getElementById("scanner-overlay").hidden = true;
+  showScannedProduct(null);
 }
 
 // Called by the library each time it reads a barcode. force = skip the "same barcode again" check.
@@ -1293,6 +1228,12 @@ function onScanSuccess(code, force) {
   const result = addToCart(code);
   beep(result.ok);
   setScannerStatus(result.text);
+  const scannedProduct = findProduct(code);
+  const resultBox = document.getElementById("scanner-product");
+  if (resultBox) {
+    resultBox.hidden = !(result.ok && scannedProduct);
+    resultBox.innerHTML = result.ok && scannedProduct ? "<strong>" + escapeHtml(scannedProduct.name) + "</strong><span>" + peso(scannedProduct.price) + "</span>" : "";
+  }
 }
 
 document.getElementById("camera-btn").addEventListener("click", function () { openScanner("sell"); });
@@ -1333,6 +1274,8 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
     stock: parseInt(document.getElementById("new-stock").value, 10),
     reorder: reorder
   };
+  const category = document.getElementById("new-category").value.trim();
+  if (category) newProduct.category = category;
   const cost = parseFloat(document.getElementById("new-cost").value);
   if (!isNaN(cost) && cost >= 0) {
     newProduct.cost = cost;               // puhunan: what we paid for it
@@ -1412,6 +1355,7 @@ function openEdit(barcode) {
   editPhoto = product.photo || "";
   showPhotoField("edit", editPhoto, product.name);
   document.getElementById("edit-name").value = product.name;
+  document.getElementById("edit-category").value = product.category || "";
   document.getElementById("edit-barcode").value = product.barcode;
   document.getElementById("edit-price").value = product.price;
   document.getElementById("edit-cost").value = typeof product.cost === "number" ? product.cost : "";
@@ -1469,6 +1413,8 @@ function saveEdit() {
     delete product.bundle;
   }
   product.name = document.getElementById("edit-name").value.trim();
+  const category = document.getElementById("edit-category").value.trim();
+  if (category) { product.category = category; } else { delete product.category; }
   product.barcode = newBarcode;
   product.price = parseFloat(document.getElementById("edit-price").value);
   if (costText === "") {
@@ -1541,7 +1487,7 @@ document.getElementById("edit-scan-btn").addEventListener("click", function () {
 
 // Delete everything (the sample products too) and start with an empty list
 document.getElementById("empty-btn").addEventListener("click", function () {
-  if (confirm("Burahin LAHAT ng paninda at benta at magsimula sa walang laman?\n\nMananatili ang GCash/Maya at utang.\nMag-save muna ng backup kung kailangan.")) {
+  if (confirm("Burahin LAHAT ng paninda at benta at magsimula sa walang laman?\n\nMananatili ang utang.\nMag-save muna ng backup kung kailangan.")) {
     products = [];
     sales = [];
     ownUse = [];
@@ -1550,267 +1496,6 @@ document.getElementById("empty-btn").addEventListener("click", function () {
     renderAll();
   }
 });
-
-
-/* ---------- 11c. GCASH AND MAYA ----------
-   The "stock" of GCash / Maya is the money in your wallet (the balance).
-   Cash in  = the customer gives you cash, you send e-money  -> balance goes DOWN
-   Cash out = you give the customer cash, they send e-money  -> balance goes UP */
-
-const WALLET_NAMES = { gcash: "GCash", maya: "Maya" };
-let walletInUse = "gcash";   // which wallet the sheet is open for
-let walletMode = "in";       // "in" (cash in) or "out" (cash out)
-let feeEdited = false;       // true after you type your own fee
-
-function byId(id) {
-  return document.getElementById(id);
-}
-
-// Round to centavos so numbers like 0.1 + 0.2 don't show up as 0.30000000000000004
-function round2(n) {
-  return Math.round(n * 100) / 100;
-}
-
-// Make sure the saved wallet data has every field (also fixes data from a backup)
-function normalizeEwallet() {
-  ["gcash", "maya"].forEach(function (name) {
-    const w = ewallet[name] || {};
-    ewallet[name] = {
-      numbers: typeof w.numbers === "string" ? w.numbers : "",
-      balance: typeof w.balance === "number" ? w.balance : 0
-    };
-  });
-  if (ewallet.cashOutFee !== "extra") {
-    ewallet.cashOutFee = "deduct";
-  }
-}
-
-// THE FEE RULE (same for GCash and Maya, cash in and cash out):
-//   every full 1,000 costs 15, and the leftover part costs
-//   10 if it is 1-500, or 15 if it is 501-999.
-//   Examples: 300 = 10, 500 = 10, 501 = 15, 1000 = 15, 1500 = 25, 2400 = 40, 2600 = 45
-function walletFee(amount) {
-  if (!(amount > 0)) {
-    return 0;
-  }
-  const thousands = Math.floor(amount / 1000);
-  const rest = amount - thousands * 1000;
-  let restFee = 0;
-  if (rest > 0 && rest <= 500) {
-    restFee = 10;
-  } else if (rest > 500) {
-    restFee = 15;
-  }
-  return thousands * 15 + restFee;
-}
-
-// What a transaction does to the wallet balance and to the cash in your drawer.
-function walletEffects(mode, amount, fee) {
-  if (mode === "in") {
-    // customer pays amount + fee in cash, wallet sends out the amount
-    return { wallet: round2(-amount), cash: round2(amount + fee) };
-  }
-  if (ewallet.cashOutFee === "extra") {
-    // customer sends amount + fee to your wallet, you hand over the full amount
-    return { wallet: round2(amount + fee), cash: round2(-amount) };
-  }
-  // fee is taken from the cash: customer sends the amount, you hand over amount - fee
-  return { wallet: round2(amount), cash: round2(-(amount - fee)) };
-}
-
-function renderWallets() {
-  byId("bal-gcash").textContent = peso(ewallet.gcash.balance);
-  byId("bal-maya").textContent = peso(ewallet.maya.balance);
-}
-
-function openWallet(name) {
-  walletInUse = name;
-  feeEdited = false;
-  byId("wallet-form").className = "sheet theme-" + name;   // blue for GCash, green for Maya
-  byId("wallet-title").textContent = WALLET_NAMES[name];
-  const numbers = ewallet[name].numbers.trim();
-  byId("wallet-numbers").textContent = numbers
-    ? "Number: " + numbers
-    : "Wala pang number. Ilagay sa Paninda tab, sa GCash & Maya settings.";
-  byId("wallet-amount").value = "";
-  byId("wallet-fee").value = "";
-  setWalletMode("in");
-  byId("wallet-overlay").hidden = false;
-  if (hasMouse()) {
-    byId("wallet-amount").focus();
-  }
-}
-
-function closeWallet() {
-  byId("wallet-overlay").hidden = true;
-}
-
-function setWalletMode(mode) {
-  walletMode = mode;
-  byId("mode-in").classList.toggle("active", mode === "in");
-  byId("mode-out").classList.toggle("active", mode === "out");
-  byId("mode-hint").textContent = mode === "in"
-    ? "Cash in: the customer hands you cash and you send it to their wallet."
-    : "Cash out: you hand the customer cash and they send it to your wallet.";
-  updateWalletSheet();
-}
-
-function signedPeso(n) {
-  return (n >= 0 ? "+" : "−") + peso(Math.abs(n));
-}
-
-// Recalculate the fee, the summary and any error every time something changes
-function updateWalletSheet() {
-  const name = walletInUse;
-  const amountBox = byId("wallet-amount");
-  const feeBox = byId("wallet-fee");
-  const amount = parseFloat(amountBox.value);
-  const hasAmount = !isNaN(amount) && amount > 0;
-
-  if (!feeEdited) {
-    feeBox.value = hasAmount ? walletFee(amount) : "";
-  }
-  const fee = parseFloat(feeBox.value);
-  const balance = ewallet[name].balance;
-  byId("wallet-balance").textContent = peso(balance);
-
-  let error = "";
-  if (hasAmount) {
-    if (isNaN(fee) || fee < 0) {
-      error = "Enter the fee (0 or more).";
-    } else if (walletMode === "in" && amount > balance) {
-      error = "Not enough in your " + WALLET_NAMES[name] + " balance (" + peso(balance) + ").";
-    } else if (walletMode === "out" && ewallet.cashOutFee === "deduct" && fee > amount) {
-      error = "The fee is bigger than the amount.";
-    }
-  }
-  const ok = hasAmount && error === "";
-
-  if (ok) {
-    const effect = walletEffects(walletMode, round2(amount), round2(fee));
-    byId("sum-cash-label").textContent = effect.cash >= 0 ? "Customer gives you" : "Give the customer";
-    byId("sum-cash").textContent = peso(Math.abs(effect.cash));
-    byId("sum-change").textContent = signedPeso(effect.wallet);
-    byId("sum-wallet").textContent = peso(round2(balance + effect.wallet));
-  } else {
-    byId("sum-cash-label").textContent = walletMode === "in" ? "Customer gives you" : "Give the customer";
-    byId("sum-cash").textContent = "-";
-    byId("sum-change").textContent = "-";
-    byId("sum-wallet").textContent = "-";
-  }
-
-  byId("wallet-error").textContent = error;
-  byId("wallet-confirm").disabled = !ok;
-}
-
-function completeWallet() {
-  const name = walletInUse;
-  const amount = round2(parseFloat(byId("wallet-amount").value));
-  const fee = round2(parseFloat(byId("wallet-fee").value));
-
-  // the same checks as above, in case the button was pressed anyway
-  if (!(amount > 0) || isNaN(fee) || fee < 0) {
-    return;
-  }
-  if (walletMode === "in" && amount > ewallet[name].balance) {
-    return;
-  }
-
-  const effect = walletEffects(walletMode, amount, fee);
-  const balanceAfter = round2(ewallet[name].balance + effect.wallet);
-
-  ewalletTx.push({
-    ts: Date.now(),
-    date: todayText(),
-    time: new Date().toLocaleTimeString(),
-    wallet: name,
-    type: walletMode,
-    amount: amount,
-    fee: fee,
-    walletDelta: effect.wallet,
-    cashDelta: effect.cash,
-    balanceAfter: balanceAfter
-  });
-  ewallet[name].balance = balanceAfter;
-  saveData();
-
-  const handText = effect.cash >= 0 ? "Collect " + peso(effect.cash) : "Give " + peso(-effect.cash);
-  closeWallet();
-  renderAll();
-  showMessage(WALLET_NAMES[name] + (walletMode === "in" ? " cash in " : " cash out ") + peso(amount) +
-              " done. " + handText + ".", "ok");
-}
-
-// Settings on the Products tab: numbers, balances, cash-out style
-function fillWalletSettings() {
-  byId("set-gcash-numbers").value = ewallet.gcash.numbers;
-  byId("set-gcash-balance").value = ewallet.gcash.balance;
-  byId("set-maya-numbers").value = ewallet.maya.numbers;
-  byId("set-maya-balance").value = ewallet.maya.balance;
-  byId("set-cashout-mode").value = ewallet.cashOutFee;
-}
-
-function saveWalletSettings() {
-  const message = byId("wallet-settings-msg");
-
-  // check both balances first, so nothing is half-saved
-  const typed = {};
-  let problem = "";
-  ["gcash", "maya"].forEach(function (name) {
-    const value = parseFloat(byId("set-" + name + "-balance").value);
-    if (isNaN(value) || value < 0) {
-      problem = "Type a balance of 0 or more for " + WALLET_NAMES[name] + ".";
-    }
-    typed[name] = value;
-  });
-  if (problem) {
-    message.textContent = problem;
-    return;
-  }
-
-  ["gcash", "maya"].forEach(function (name) {
-    ewallet[name].numbers = byId("set-" + name + "-numbers").value.trim();
-    const newBalance = round2(typed[name]);
-    const difference = round2(newBalance - ewallet[name].balance);
-    if (difference !== 0) {
-      // keep a record of every manual change, so the balance can always be explained
-      ewalletTx.push({
-        ts: Date.now(), date: todayText(), time: new Date().toLocaleTimeString(),
-        wallet: name, type: "adjust", amount: difference, fee: 0,
-        walletDelta: difference, cashDelta: 0, balanceAfter: newBalance
-      });
-      ewallet[name].balance = newBalance;
-    }
-  });
-  ewallet.cashOutFee = byId("set-cashout-mode").value === "extra" ? "extra" : "deduct";
-
-  saveData();
-  renderAll();
-  fillWalletSettings();
-  message.textContent = "Saved.";
-}
-
-document.querySelectorAll(".wallet-tile").forEach(function (button) {
-  button.addEventListener("click", function () {
-    openWallet(button.getAttribute("data-wallet"));
-  });
-});
-byId("mode-in").addEventListener("click", function () { setWalletMode("in"); });
-byId("mode-out").addEventListener("click", function () { setWalletMode("out"); });
-byId("wallet-amount").addEventListener("input", function () {
-  feeEdited = false;                 // a new amount means a new automatic fee
-  updateWalletSheet();
-});
-byId("wallet-fee").addEventListener("input", function () {
-  feeEdited = true;                  // the fee was typed by hand: leave it alone
-  updateWalletSheet();
-});
-byId("wallet-form").addEventListener("submit", function (event) {
-  event.preventDefault();
-  completeWallet();
-});
-byId("wallet-cancel").addEventListener("click", closeWallet);
-byId("save-wallet-settings").addEventListener("click", saveWalletSettings);
 
 
 /* ---------- 11d. UTANG ----------
@@ -2153,39 +1838,6 @@ setupPhotoField("new", function () { return byId("new-name").value; }, function 
 setupPhotoField("edit", function () { return byId("edit-name").value; }, function (data) { editPhoto = data; });
 showPhotoField("new", "", "");
 
-// ----- quick amounts for GCash / Maya (tap instead of typing) -----
-const WALLET_QUICK = [100, 200, 300, 500, 1000, 2000];
-
-byId("wallet-quick").innerHTML = WALLET_QUICK.map(function (amount) {
-  return '<button type="button" class="bill ' + (BILL_CLASS[amount] || "bx") + '" data-amount="' + amount + '">₱' + amount + "</button>";
-}).join("");
-
-byId("wallet-quick").addEventListener("click", function (event) {
-  const button = event.target.closest("button");
-  if (!button) { return; }
-  byId("wallet-amount").value = button.getAttribute("data-amount");
-  feeEdited = false;
-  updateWalletSheet();
-  speakWallet();                       // say it right away, like the Bayad screen
-});
-
-// Says the GCash/Maya deal out loud: "Cash in, 500 pesos. Fee, 15 pesos. Collect, 515 pesos."
-function speakWallet() {
-  const amount = round2(parseFloat(byId("wallet-amount").value));
-  const fee = round2(parseFloat(byId("wallet-fee").value));
-  if (!(amount > 0) || isNaN(fee) || fee < 0) { return; }
-  if (walletMode === "in" && amount > ewallet[walletInUse].balance) { return; }
-  if (walletMode === "out" && ewallet.cashOutFee === "deduct" && fee > amount) { return; }
-  const effect = walletEffects(walletMode, amount, fee);
-  speakParts([
-    [walletMode === "in" ? "Cash in" : "Cash out", amount],
-    ["Fee", fee],
-    [effect.cash >= 0 ? "Singil" : "Ibigay", Math.abs(effect.cash)]
-  ]);
-}
-byId("wallet-speak").addEventListener("click", speakWallet);
-
-
 /* ---------- 12. BACKUP AND RESTORE ----------
    A backup is a text file (.json) holding your products and sales. */
 
@@ -2196,8 +1848,6 @@ function makeBackup() {
     savedAt: new Date().toISOString(),
     products: products,
     sales: sales,
-    ewallet: ewallet,
-    ewalletTx: ewalletTx,
     ledger: ledger,
     ownUse: ownUse,
     settings: settings
@@ -2223,17 +1873,11 @@ function checkBackup(data) {
     return "Some products in the backup file are damaged.";
   }
   // These three only exist in newer backups, so they are optional.
-  if (data.ewalletTx !== undefined && !Array.isArray(data.ewalletTx)) {
-    return "The GCash/Maya records in the backup file are damaged.";
-  }
   if (data.ledger !== undefined && !Array.isArray(data.ledger)) {
     return "The utang records in the backup file are damaged.";
   }
   if (data.ownUse !== undefined && !Array.isArray(data.ownUse)) {
     return "The Para samen records in the backup file are damaged.";
-  }
-  if (data.ewallet !== undefined && (typeof data.ewallet !== "object" || data.ewallet === null)) {
-    return "The GCash/Maya settings in the backup file are damaged.";
   }
   return "";
 }
@@ -2285,77 +1929,38 @@ async function saveBackup() {
 
 function restoreBackup(text) {
   let data;
-  try {
-    data = JSON.parse(text);
-  } catch (error) {
-    alert("That file couldn't be read. Is it a backup file from this POS?");
-    return;
-  }
-
+  try { data = JSON.parse(text); }
+  catch (error) { alert("That file couldn't be read. Is it a backup file from this POS?"); return; }
   const problem = checkBackup(data);
-  if (problem) {
-    alert(problem);
-    return;
-  }
-
-  const question = "Restore this backup?\n\n" +
-    data.products.length + " products and " + data.sales.length + " sales" +
+  if (problem) { alert(problem); return; }
+  const question = "Restore this backup?\n\n" + data.products.length + " products and " + data.sales.length + " sales" +
     (data.savedAt ? " (saved " + new Date(data.savedAt).toLocaleString() + ")" : "") +
     ".\n\nThis REPLACES the data currently on this page.";
-  if (!confirm(question)) {
-    return;
-  }
-
+  if (!confirm(question)) { return; }
   products = data.products;
   sales = data.sales;
-  // An older backup has no GCash/Maya or utang data: keep what is on this page instead of wiping it.
-  if (data.ewallet !== undefined) { ewallet = data.ewallet; normalizeEwallet(); }
-  if (data.ewalletTx !== undefined) { ewalletTx = data.ewalletTx; }
   if (data.ledger !== undefined) { ledger = data.ledger; }
   if (data.ownUse !== undefined) { ownUse = data.ownUse; }
-  if (data.settings && typeof data.settings === "object") {
-    settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
-  }
+  if (data.settings && typeof data.settings === "object") { settings = Object.assign({}, DEFAULT_SETTINGS, data.settings); }
   cart = [];
+  lastSale = null;
   setOwnMode(false);
   renderSwitches();
   saveData();
   renderAll();
-  fillWalletSettings();
   showMessage("Backup restored.", "ok");
 }
 
 document.getElementById("backup-btn").addEventListener("click", saveBackup);
-
-document.getElementById("restore-btn").addEventListener("click", function () {
-  document.getElementById("restore-file").click();
-});
-
+document.getElementById("restore-btn").addEventListener("click", function () { document.getElementById("restore-file").click(); });
 document.getElementById("restore-file").addEventListener("change", function () {
   const file = this.files[0];
   if (!file) { return; }
   const reader = new FileReader();
-  reader.onload = function () {
-    restoreBackup(reader.result);
-  };
+  reader.onload = function () { restoreBackup(reader.result); };
   reader.readAsText(file);
-  this.value = "";   // so choosing the same file again still works
+  this.value = "";
 });
-
-// Reset everything back to the sample data (asks first)
-document.getElementById("reset-btn").addEventListener("click", function () {
-  if (confirm("Burahin lahat ng paninda at benta at bumalik sa sample data?\n\nMananatili ang GCash/Maya at utang.")) {
-    products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));   // a fresh copy of the samples
-    sales = [];
-    ownUse = [];
-    cart = [];
-    saveData();
-    renderAll();
-  }
-});
-
-
-
 /* ---------- 10b. BURAHIN (UNDO), RESIBO (RECEIPT) AND BOSES (VOICE) ---------- */
 
 // ----- Burahin: take back a wrong entry -----
@@ -2389,15 +1994,6 @@ function undoEntry(kind, order) {
     });
     ownUse.splice(order, 1);
     showMessage("Nabura ang Para samen. Bumalik ang stock.", "ok");
-
-  } else if (kind === "wallet") {
-    const tx = ewalletTx[order];
-    if (!tx) { return; }
-    if (!confirm("Burahin ang " + WALLET_NAMES[tx.wallet] + (tx.type === "in" ? " cash in " : " cash out ") + peso(tx.amount) + "?\n\nBabalik ang balance ng " + WALLET_NAMES[tx.wallet] + ".")) { return; }
-    ewallet[tx.wallet].balance = round2(ewallet[tx.wallet].balance - tx.walletDelta);
-    ewalletTx.splice(order, 1);
-    showMessage("Nabura. Naayos ang balance.", "ok");
-
   } else if (kind === "payment") {
     const entry = ledger[order];
     if (!entry || entry.type !== "payment") { return; }
@@ -2586,7 +2182,7 @@ function filipinoVoice() {
 }
 
 // parts = a list like [["Natanggap", 500], ["Sukli", 350]]. Uses a Filipino voice if the phone has one, otherwise English.
-const ENGLISH_LABELS = { "Total": "Total", "Natanggap": "Received", "Sukli": "Change", "Kulang pa": "Short by", "Singil": "Collect", "Ibigay": "Give", "Fee": "Fee", "Cash in": "Cash in", "Cash out": "Cash out" };
+const ENGLISH_LABELS = { "Total": "Total", "Natanggap": "Received", "Sukli": "Change", "Kulang pa": "Short by", "Singil": "Collect", "Ibigay": "Give" };
 
 function speakParts(parts, force) {
   if ((settings.voice === false && !force) || !("speechSynthesis" in window)) { return; }
@@ -3120,22 +2716,19 @@ byId("csv-import").addEventListener("click", function () {
 
 /* ----- Sara na ang tindahan: count the drawer ----- */
 function closingNumbers() {
-  const nums = { cashSales: 0, payments: 0, walletIn: 0, walletOut: 0 };
+  const nums = { cashSales: 0, payments: 0 };
   dayEvents(todayText()).forEach(function (event) {
     const d = event.data;
     if (event.kind === "sale" && !d.utang) {
       nums.cashSales += d.total;
     } else if (event.kind === "payment") {
       nums.payments += d.amount;
-    } else if (event.kind === "wallet" && typeof d.cashDelta === "number") {
-      if (d.cashDelta >= 0) { nums.walletIn += d.cashDelta; } else { nums.walletOut += d.cashDelta; }
     }
   });
   Object.keys(nums).forEach(function (k) { nums[k] = round2(nums[k]); });
-  nums.expected = round2(nums.cashSales + nums.payments + nums.walletIn + nums.walletOut);
+  nums.expected = round2(nums.cashSales + nums.payments);
   return nums;
 }
-
 function lastClosing() {
   const list = settings.closings || [];
   return list.length ? list[list.length - 1] : null;
@@ -3146,8 +2739,6 @@ function openClose() {
   byId("close-date").textContent = dayLabelLong(todayText());
   byId("close-start").value = last && typeof last.counted === "number" ? last.counted : "";
   byId("close-counted").value = "";
-  byId("close-gcash").value = "";
-  byId("close-maya").value = "";
   renderClose();
   openSheet("close-overlay");
 }
@@ -3169,8 +2760,6 @@ function renderClose() {
     ["Panimulang cash", closeStart()],
     ["+ Benta (cash)", n.cashSales],
     ["+ Bayad sa utang", n.payments],
-    ["+ GCash/Maya cash in", n.walletIn],
-    ["&minus; GCash/Maya cash out", n.walletOut]
   ];
   byId("close-rows").innerHTML = rows.map(function (r) {
     return '<div class="sum-row"><span>' + r[0] + "</span><strong>" + peso(r[1]) + "</strong></div>";
@@ -3187,12 +2776,6 @@ function renderClose() {
     diffBox.innerHTML = "<span>Kulang / Sobra</span><strong>" + w.text + "</strong>";
   }
 
-  const gc = parseFloat(byId("close-gcash").value);
-  const mc = parseFloat(byId("close-maya").value);
-  const parts = [];
-  if (!isNaN(gc)) { parts.push("GCash: " + diffWords(round2(gc - ewallet.gcash.balance)).text + " (dapat " + peso(ewallet.gcash.balance) + ")"); }
-  if (!isNaN(mc)) { parts.push("Maya: " + diffWords(round2(mc - ewallet.maya.balance)).text + " (dapat " + peso(ewallet.maya.balance) + ")"); }
-  byId("close-wallet-diff").textContent = parts.join("  ·  ") || "Ilagay ang balance sa app para ma-check kung tugma sa record.";
 
   const history = (settings.closings || []).slice(-7).reverse();
   byId("close-history").innerHTML = history.length ? history.map(function (c) {
@@ -3204,7 +2787,7 @@ function renderClose() {
 }
 
 byId("close-btn").addEventListener("click", openClose);
-["close-start", "close-counted", "close-gcash", "close-maya"].forEach(function (id) {
+["close-start", "close-counted"].forEach(function (id) {
   byId(id).addEventListener("input", renderClose);
 });
 byId("close-cancel").addEventListener("click", function () { closeSheet("close-overlay"); });
