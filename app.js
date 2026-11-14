@@ -27,7 +27,7 @@ const SETTINGS_KEY = "pos_settings";      // on/off switches
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
 const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "", closings: [] };
 const BEST_COUNT = 10;
-const APP_VERSION = "v18 - Nov 14";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v19 - Nov 14";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // ----- Icons: simple line icons (instead of emojis). icon("trash") gives the picture as HTML. -----
 const ICONS = {
@@ -114,15 +114,15 @@ function saveData() {
 function byId(id) { return document.getElementById(id); }
 function round2(n) { return Math.round(n * 100) / 100; }
 
-// Turn 12 into "â‚±12.00"
+// Turn 12 into "\u20B112.00"
 function peso(amount) {
-  // 1234.5 becomes "â‚±1,234.50"
-  return "â‚±" + amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // 1234.5 becomes "\u20B11,234.50"
+  return "\u20B1" + amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Like peso(), but a whole amount drops the ".00": 1500 becomes "â‚±1,500"
+// Like peso(), but a whole amount drops the ".00": 1500 becomes "\u20B11,500"
 function pesoShort(amount) {
-  return Number.isInteger(amount) ? "â‚±" + amount.toLocaleString("en-US") : peso(amount);
+  return Number.isInteger(amount) ? "\u20B1" + amount.toLocaleString("en-US") : peso(amount);
 }
 
 // Make text safe before putting it into the page
@@ -875,7 +875,7 @@ function buildQuickCash() {
   // each button has the color of the real peso bill, so it can be found by color
   let html = '<button type="button" class="bill exact" data-cash="exact">Exact</button>';
   QUICK_CASH.forEach(function (amount) {
-    html += '<button type="button" class="bill ' + BILL_CLASS[amount] + '" data-cash="' + amount + '">â‚±' + amount + "</button>";
+    html += '<button type="button" class="bill ' + BILL_CLASS[amount] + '" data-cash="' + amount + '">\u20B1' + amount + "</button>";
   });
   document.getElementById("quick-cash").innerHTML = html;
 }
@@ -1317,7 +1317,7 @@ function showFrontState(id) {
   document.getElementById(id).addEventListener("change", function () { showFrontState(id); });
 });
 
-// The green "Kita â‚±3.00 bawat isa" line under the Puhunan and Presyo boxes
+// The green "Kita \u20B13.00 bawat isa" line under the Puhunan and Presyo boxes
 function showProfitLine(costId, priceId, lineId) {
   const cost = parseFloat(document.getElementById(costId).value);
   const price = parseFloat(document.getElementById(priceId).value);
@@ -2226,7 +2226,7 @@ function speakPayState() {
 }
 
 document.getElementById("pay-speak").addEventListener("click", function () { speakPayState(); });
-// Tapping a bill (â‚±100, â‚±500...) says the received cash and the sukli right away
+// Tapping a bill (\u20B1100, \u20B1500...) says the received cash and the sukli right away
 document.getElementById("quick-cash").addEventListener("click", function (event) {
   if (event.target.closest("button")) { speakPayState(); }
 });
@@ -2602,7 +2602,7 @@ function csvColumnMap(header) {
 }
 
 function csvNumber(text) {
-  const cleaned = String(text || "").replace(/[â‚±,\s]/g, "").replace(/^php/i, "");
+  const cleaned = String(text || "").replace(/[\u20B1,\s]/g, "").replace(/^php/i, "");
   if (cleaned === "") { return null; }
   const n = Number(cleaned);
   return isNaN(n) ? NaN : n;
@@ -2943,6 +2943,7 @@ if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
 }
 
 document.getElementById("app-version").textContent = APP_VERSION;
+
 
 
 

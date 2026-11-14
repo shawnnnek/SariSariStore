@@ -1,4 +1,4 @@
-/* =====================================================
+﻿/* =====================================================
    My Sari-Sari POS - style.css (phone-first, color-coded)
    Colors mean something:
      orange = selling
@@ -419,17 +419,6 @@ button.wide { width: 100%; margin-top: 18px; }
 .tag.sale  { background: var(--sales); color: #fff; }
 .tag.utang { background: var(--utang); color: #fff; }
 
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-height: 96px;
-  padding: 14px;
-  text-align: left;
-  color: #fff;
-  border: none;
-  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.28);
-}
 
 .seg { display: flex; margin: 14px 0 4px; border: 2px solid var(--accent); border-radius: 12px; overflow: hidden; }
 .seg button {
@@ -918,3 +907,7 @@ h3.sub { font-size: 15px; margin: 16px 0 6px; color: var(--text); }
 .scanner-product strong { min-width: 0; }
 .scanner-product span { flex: none; font-size: 21px; font-weight: 800; }
 .summary-list { margin: 14px 0; padding: 12px 14px; background: var(--accent-soft); border-radius: 12px; }
+
+/* Keep the 7-day chart selector in one horizontal row. */
+#view-week .chart-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+#view-week .chart-seg > button { width: 100%; min-width: 0; }

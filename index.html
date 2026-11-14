@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -22,7 +22,7 @@
   <header>
     <h1>My Sari-Sari POS</h1>
     <div class="today">
-      Ngayon <strong id="today-total">₱0.00</strong>
+      Ngayon <strong id="today-total">&#8369;0.00</strong>
       &middot; <span id="today-count">0</span> transactions
     </div>
   </header>
@@ -84,7 +84,7 @@
       <h2>Benta ngayon</h2>
 
       <div class="stat-row">
-        <div class="stat"><div class="stat-label">Total</div><div id="stat-total" class="stat-value">₱0.00</div></div>
+        <div class="stat"><div class="stat-label">Total</div><div id="stat-total" class="stat-value">&#8369;0.00</div></div>
         <div class="stat"><div class="stat-label">Count</div><div id="stat-count" class="stat-value">0</div></div>
         <div class="stat"><div class="stat-label">Items</div><div id="stat-items" class="stat-value">0</div></div>
       </div>
@@ -92,8 +92,8 @@
 
       <h2>Kita ngayon</h2>
       <div class="stat-row two profit-row">
-        <div class="stat profit"><div class="stat-label">Kita</div><div id="stat-profit" class="stat-value">₱0.00</div></div>
-        <div class="stat"><div class="stat-label">Sa paninda</div><div id="stat-profit-items" class="stat-value">₱0.00</div></div>
+        <div class="stat profit"><div class="stat-label">Kita</div><div id="stat-profit" class="stat-value">&#8369;0.00</div></div>
+        <div class="stat"><div class="stat-label">Sa paninda</div><div id="stat-profit-items" class="stat-value">&#8369;0.00</div></div>
       </div>
       <p id="profit-hint" class="hint"></p>
       <p id="own-hint" class="hint own-hint"></p>
@@ -108,8 +108,8 @@
     <section id="view-week" class="view" hidden>
       <h2>Last 7 days</h2>
       <div class="stat-row two">
-        <div class="stat"><div class="stat-label">7-day total</div><div id="wk7-total" class="stat-value">₱0.00</div></div>
-        <div class="stat profit"><div class="stat-label">Kita</div><div id="wk7-profit" class="stat-value">₱0.00</div></div>
+        <div class="stat"><div class="stat-label">7-day total</div><div id="wk7-total" class="stat-value">&#8369;0.00</div></div>
+        <div class="stat profit"><div class="stat-label">Kita</div><div id="wk7-profit" class="stat-value">&#8369;0.00</div></div>
       </div>
 
       <h2>Chart</h2>
@@ -127,11 +127,11 @@
 
       <h2 id="wk-title">Day</h2>
       <div class="stat-row">
-        <div class="stat"><div class="stat-label">Total</div><div id="wk-total" class="stat-value">₱0.00</div></div>
+        <div class="stat"><div class="stat-label">Total</div><div id="wk-total" class="stat-value">&#8369;0.00</div></div>
         <div class="stat"><div class="stat-label">Count</div><div id="wk-count" class="stat-value">0</div></div>
         <div class="stat"><div class="stat-label">Items</div><div id="wk-items" class="stat-value">0</div></div>
       </div>
-      <div class="stat-row two"><div class="stat profit"><div class="stat-label">Kita</div><div id="wk-profit" class="stat-value">₱0.00</div></div></div>
+      <div class="stat-row two"><div class="stat profit"><div class="stat-label">Kita</div><div id="wk-profit" class="stat-value">&#8369;0.00</div></div></div>
       <p id="wk-hint" class="hint"></p>
 
       <h2>Transactions</h2>
@@ -142,7 +142,7 @@
     <section id="view-utang" class="view theme-utang" hidden>
       <h2>Utang</h2>
       <div class="stat-row two">
-        <div class="stat"><div class="stat-label">Total owed</div><div id="debt-total" class="stat-value">₱0.00</div></div>
+        <div class="stat"><div class="stat-label">Total owed</div><div id="debt-total" class="stat-value">&#8369;0.00</div></div>
         <div class="stat"><div class="stat-label">Owing</div><div id="debt-people" class="stat-value">0 people</div></div>
       </div>
 
@@ -184,11 +184,11 @@
 
         <div class="two-col">
           <div>
-            <label for="new-cost">Puhunan (₱)</label>
+            <label for="new-cost">Puhunan (&#8369;)</label>
             <input type="number" id="new-cost" inputmode="decimal" min="0" step="0.01" placeholder="binili mo">
           </div>
           <div>
-            <label for="new-price">Presyo (₱)</label>
+            <label for="new-price">Presyo (&#8369;)</label>
             <input type="number" id="new-price" inputmode="decimal" min="0" step="0.01" required>
           </div>
         </div>
@@ -200,11 +200,11 @@
             <input type="number" id="new-bundle-qty" inputmode="numeric" min="2" step="1" placeholder="hal. 3">
           </div>
           <div>
-            <label for="new-bundle-price">Presyo ng bundle (₱)</label>
+            <label for="new-bundle-price">Presyo ng bundle (&#8369;)</label>
             <input type="number" id="new-bundle-price" inputmode="decimal" min="0" step="0.01" placeholder="hal. 10">
           </div>
         </div>
-        <p class="hint">Optional. Halimbawa: 3 para sa ₱10.</p>
+        <p class="hint">Optional. Halimbawa: 3 para sa &#8369;10.</p>
 
         <div class="three">
           <div>
@@ -264,7 +264,7 @@
           <option value="1.25">Mabilis</option>
           <option value="1.5">Pinakamabilis</option>
         </select>
-        <button type="button" id="voice-test" class="secondary wide">▶ Subukan ang boses</button>
+        <button type="button" id="voice-test" class="secondary wide">&#9654; Subukan ang boses</button>
         <p id="voice-info" class="hint"></p>
       </div>
 
@@ -295,7 +295,7 @@
   <div id="checkout-bar" class="checkout-bar">
     <div>
       <div class="bar-label"><span id="item-count">0</span> items</div>
-      <div id="cart-total" class="bar-total">₱0.00</div>
+      <div id="cart-total" class="bar-total">&#8369;0.00</div>
     </div>
     <button id="charge-btn" class="primary"><i data-icon="cash"></i>Bayad</button>
   </div>
@@ -313,14 +313,14 @@
   <div id="pay-overlay" class="overlay" hidden>
     <div class="sheet">
       <h2>Bayad</h2>
-      <div class="sheet-total">Total <strong id="pay-total">₱0.00</strong></div>
+      <div class="sheet-total">Total <strong id="pay-total">&#8369;0.00</strong></div>
       <button type="button" id="pay-speak" class="speak-btn"><i data-icon="speaker"></i>Pakinggan</button>
 
       <label for="cash-input">Cash na ibinayad</label>
       <input type="number" id="cash-input" inputmode="decimal" min="0" step="0.01" placeholder="0.00">
       <div id="quick-cash" class="quick-cash"></div>
 
-      <div class="change-row"><span id="change-label">Sukli</span><strong id="change">₱0.00</strong></div>
+      <div class="change-row"><span id="change-label">Sukli</span><strong id="change">&#8369;0.00</strong></div>
 
       <div class="button-row">
         <button id="pay-cancel" class="secondary">Cancel</button>
@@ -334,7 +334,7 @@
   <div id="utang-overlay" class="overlay" hidden>
     <form id="utang-form" class="sheet theme-utang">
       <h2>Ilagay sa utang</h2>
-      <div class="sheet-total">Total <strong id="utang-total">₱0.00</strong></div>
+      <div class="sheet-total">Total <strong id="utang-total">&#8369;0.00</strong></div>
 
       <label for="utang-name">Pangalan (sino ang may utang)</label>
       <input type="text" id="utang-name" list="utang-names" autocomplete="off" required>
@@ -355,10 +355,10 @@
   <div id="debt-overlay" class="overlay" hidden>
     <div class="sheet theme-utang">
       <h2 id="debt-name">Name</h2>
-      <div class="sheet-total">Owes <strong id="debt-balance">₱0.00</strong></div>
+      <div class="sheet-total">Owes <strong id="debt-balance">&#8369;0.00</strong></div>
 
       <form id="debt-pay-form">
-        <label for="debt-pay-amount">Payment received (₱)</label>
+        <label for="debt-pay-amount">Payment received (&#8369;)</label>
         <div class="inline">
           <input type="number" id="debt-pay-amount" inputmode="decimal" min="0" step="0.01" placeholder="0">
           <button type="button" id="debt-pay-full" class="secondary">Full</button>
@@ -415,11 +415,11 @@
 
       <div class="two-col">
         <div>
-          <label for="edit-cost">Puhunan (₱)</label>
+          <label for="edit-cost">Puhunan (&#8369;)</label>
           <input type="number" id="edit-cost" inputmode="decimal" min="0" step="0.01" placeholder="binili mo">
         </div>
         <div>
-          <label for="edit-price">Presyo (₱)</label>
+          <label for="edit-price">Presyo (&#8369;)</label>
           <input type="number" id="edit-price" inputmode="decimal" min="0" step="0.01" required>
         </div>
       </div>
@@ -459,7 +459,7 @@
     </div>
   </div>
   <div id="receive-overlay" class="overlay" hidden><div class="sheet"><h2>Dagdag stock</h2><p class="hint">I-scan o i-type ang barcode ng dumating.</p><form id="receive-form" class="scan-row"><input id="receive-input" type="text" autocomplete="off"><button type="submit" class="secondary">Add</button><button type="button" id="receive-camera" class="primary">Scan</button></form><p id="receive-message" class="message"></p><div id="receive-list" class="today-list"></div><div class="button-row"><button type="button" id="receive-cancel" class="secondary">Cancel</button><button type="button" id="receive-done" class="primary" disabled>Dagdag stock</button></div></div></div>
-  <div id="shop-overlay" class="overlay" hidden><div class="sheet"><h2>Pamilihan</h2><p id="shop-hint" class="hint"></p><div id="shop-list" class="product-list"></div><p id="shop-note" class="hint"></p><div class="sheet-total">Tinatayang gastos <strong id="shop-total">₱0.00</strong></div><div class="button-row"><button type="button" id="shop-close" class="secondary">Close</button><button type="button" id="shop-share" class="primary">I-share</button></div></div></div>
+  <div id="shop-overlay" class="overlay" hidden><div class="sheet"><h2>Pamilihan</h2><p id="shop-hint" class="hint"></p><div id="shop-list" class="product-list"></div><p id="shop-note" class="hint"></p><div class="sheet-total">Tinatayang gastos <strong id="shop-total">&#8369;0.00</strong></div><div class="button-row"><button type="button" id="shop-close" class="secondary">Close</button><button type="button" id="shop-share" class="primary">I-share</button></div></div></div>
   <div id="csv-overlay" class="overlay" hidden><div class="sheet"><h2>Import / Export CSV</h2><p class="hint">I-save ang listahan sa CSV o mag-import ng paninda.</p><div class="button-row"><button type="button" id="csv-export" class="secondary">Export</button><button type="button" id="csv-template" class="secondary">Template</button><button type="button" id="csv-pick" class="primary">Pumili ng file</button></div><input id="csv-file" type="file" accept=".csv,text/csv" hidden><label class="check-row"><input id="csv-stock" type="checkbox">Palitan din ang stock</label><div id="csv-preview" class="csv-preview"></div><div class="button-row"><button type="button" id="csv-close" class="secondary">Close</button><button type="button" id="csv-import" class="primary" disabled>Import</button></div></div></div>  <!-- ============ RESIBO (RECEIPT) ============ -->
   <div id="receipt-overlay" class="overlay" hidden>
     <div class="sheet">
@@ -476,6 +476,7 @@
     <div class="scanner-box">
       <!-- Done is at the top so the camera picture can never cover it -->
       <button id="scanner-close" class="primary wide scanner-done">Done</button>
+      <div id="scanner-product" class="scanner-product" aria-live="polite" hidden></div>
       <div id="reader"></div>
       <!-- Zoom slider: only shown on phones whose camera allows zoom -->
       <div id="zoom-row" class="zoom-row" hidden>
@@ -483,10 +484,12 @@
         <input type="range" id="zoom-slider" min="1" max="3" step="0.1" value="1" aria-label="Zoom">
         <span id="zoom-value">1x</span>
       </div>
-      <p id="scanner-status" class="scanner-status"></p><div id="scanner-product" class="scanner-product" aria-live="polite" hidden></div>
+      <p id="scanner-status" class="scanner-status"></p>
     </div>
   </div>
 
   <script src="app.js"></script>
 </body>
 </html>
+
+
