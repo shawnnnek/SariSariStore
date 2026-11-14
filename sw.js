@@ -1,9 +1,9 @@
-/* sw.js - the "service worker".
+﻿/* sw.js - the "service worker".
    It keeps a copy of the app's files on the phone so the POS opens even with no internet.
    - Our own files: try the internet first (so updates arrive), use the saved copy if offline.
    - The scanner library from the internet: use the saved copy first (it never changes). */
 
-const CACHE_NAME = "sari-pos-v9";
+const CACHE_NAME = "sari-pos-v11";
 const FILES = [
   "./",
   "index.html",
@@ -61,3 +61,5 @@ self.addEventListener("fetch", function (event) {
     );
   }
 });
+
+

@@ -1,4 +1,4 @@
-/* =====================================================
+﻿/* =====================================================
    My Sari-Sari POS - app.js (phone-friendly version)
    HTML = the structure, CSS = the look, JavaScript = what happens when you tap or scan.
    ===================================================== */
@@ -27,7 +27,7 @@ const SETTINGS_KEY = "pos_settings";      // on/off switches
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
 const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "", closings: [] };
 const BEST_COUNT = 10;
-const APP_VERSION = "v17 - Nov 14";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v18 - Nov 14";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // ----- Icons: simple line icons (instead of emojis). icon("trash") gives the picture as HTML. -----
 const ICONS = {
@@ -114,15 +114,15 @@ function saveData() {
 function byId(id) { return document.getElementById(id); }
 function round2(n) { return Math.round(n * 100) / 100; }
 
-// Turn 12 into "₱12.00"
+// Turn 12 into "â‚±12.00"
 function peso(amount) {
-  // 1234.5 becomes "₱1,234.50"
-  return "₱" + amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // 1234.5 becomes "â‚±1,234.50"
+  return "â‚±" + amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Like peso(), but a whole amount drops the ".00": 1500 becomes "₱1,500"
+// Like peso(), but a whole amount drops the ".00": 1500 becomes "â‚±1,500"
 function pesoShort(amount) {
-  return Number.isInteger(amount) ? "₱" + amount.toLocaleString("en-US") : peso(amount);
+  return Number.isInteger(amount) ? "â‚±" + amount.toLocaleString("en-US") : peso(amount);
 }
 
 // Make text safe before putting it into the page
@@ -875,7 +875,7 @@ function buildQuickCash() {
   // each button has the color of the real peso bill, so it can be found by color
   let html = '<button type="button" class="bill exact" data-cash="exact">Exact</button>';
   QUICK_CASH.forEach(function (amount) {
-    html += '<button type="button" class="bill ' + BILL_CLASS[amount] + '" data-cash="' + amount + '">₱' + amount + "</button>";
+    html += '<button type="button" class="bill ' + BILL_CLASS[amount] + '" data-cash="' + amount + '">â‚±' + amount + "</button>";
   });
   document.getElementById("quick-cash").innerHTML = html;
 }
@@ -996,6 +996,8 @@ let scanner = null;          // the scanner object, while the camera is open
 let scannerMode = "sell";    // "sell" = keep adding to the cart, "fill" = fill the barcode box once
 let lastScanCode = "";
 let lastScanTime = 0;
+let scanResultPending = false;
+let scannerCloseTimer = null;
 
 // Load a script file from the internet. Returns a Promise (a "promise to finish later").
 function loadScript(url) {
@@ -1082,6 +1084,8 @@ function scanFormats() {
 }
 
 async function openScanner(mode) {
+  if (scannerCloseTimer) { clearTimeout(scannerCloseTimer); scannerCloseTimer = null; }
+  scanResultPending = false;
   scannerMode = mode;
   lastScanCode = "";
   unlockAudio();
@@ -1144,9 +1148,7 @@ async function startLive() {
     // ask for continuous auto-focus (ignored by phones that can't)
     try { scanner.applyVideoConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (e) {}
     setupZoom();
-    setScannerStatus(scannerMode === "sell" || scannerMode === "receive"
-      ? "Itutok sa barcode, mga 15-20 cm ang layo, nakahiga ang barcode. Tuloy-tuloy ang scan hanggang pindutin ang Done."
-      : "Itutok sa barcode.");
+    setScannerStatus(scannerMode === "sell" ? "Itutok sa barcode. Lalabas ang pangalan at presyo, saka kusang magsasara ang camera." : scannerMode === "receive" ? "Itutok sa mga barcode. Tuloy-tuloy ang scan hanggang pindutin ang Done." : "Itutok sa barcode.");
   } catch (error) {
     scanner = null;
     setScannerStatus("Hindi mabuksan ang camera. Payagan ang camera para sa page na ito (iPhone: Settings > Safari > Camera).");
@@ -1194,6 +1196,8 @@ async function stopLive() {
 }
 
 async function closeScanner() {
+  if (scannerCloseTimer) { clearTimeout(scannerCloseTimer); scannerCloseTimer = null; }
+  scanResultPending = false;
   await stopLive();
   document.getElementById("scanner-overlay").hidden = true;
   showScannedProduct(null);
@@ -1201,6 +1205,7 @@ async function closeScanner() {
 
 // Called by the library each time it reads a barcode. force = skip the "same barcode again" check.
 function onScanSuccess(code, force) {
+  if (scanResultPending) { return; }
   // The camera sees the same barcode many times a second. Ignore repeats within 2 seconds.
   const now = Date.now();
   if (force !== true && code === lastScanCode && now - lastScanTime < 2000) {
@@ -1228,11 +1233,12 @@ function onScanSuccess(code, force) {
   const result = addToCart(code);
   beep(result.ok);
   setScannerStatus(result.text);
-  const scannedProduct = findProduct(code);
-  const resultBox = document.getElementById("scanner-product");
-  if (resultBox) {
-    resultBox.hidden = !(result.ok && scannedProduct);
-    resultBox.innerHTML = result.ok && scannedProduct ? "<strong>" + escapeHtml(scannedProduct.name) + "</strong><span>" + peso(scannedProduct.price) + "</span>" : "";
+    const scannedProduct = findProduct(code);
+  showScannedProduct(result.ok ? scannedProduct : null);
+  if (result.ok) {
+    // Show the product and price briefly, then stop the camera and return to Sell.
+    scanResultPending = true;
+    scannerCloseTimer = window.setTimeout(function () { closeScanner(); }, 800);
   }
 }
 
@@ -1311,7 +1317,7 @@ function showFrontState(id) {
   document.getElementById(id).addEventListener("change", function () { showFrontState(id); });
 });
 
-// The green "Kita ₱3.00 bawat isa" line under the Puhunan and Presyo boxes
+// The green "Kita â‚±3.00 bawat isa" line under the Puhunan and Presyo boxes
 function showProfitLine(costId, priceId, lineId) {
   const cost = parseFloat(document.getElementById(costId).value);
   const price = parseFloat(document.getElementById(priceId).value);
@@ -2220,7 +2226,7 @@ function speakPayState() {
 }
 
 document.getElementById("pay-speak").addEventListener("click", function () { speakPayState(); });
-// Tapping a bill (₱100, ₱500...) says the received cash and the sukli right away
+// Tapping a bill (â‚±100, â‚±500...) says the received cash and the sukli right away
 document.getElementById("quick-cash").addEventListener("click", function (event) {
   if (event.target.closest("button")) { speakPayState(); }
 });
@@ -2531,12 +2537,12 @@ function productsToCsv() {
       p.bundle ? p.bundle.qty : "", p.bundle ? p.bundle.price : ""
     ].map(csvCell).join(","));
   });
-  return "﻿" + lines.join("\r\n") + "\r\n";      // the first character helps Excel read the letters right
+  return "ï»¿" + lines.join("\r\n") + "\r\n";      // the first character helps Excel read the letters right
 }
 
 // Reads CSV text into rows of cells. Understands quotes, commas, semicolons and tabs.
 function parseCsv(text) {
-  text = text.replace(/^﻿/, "");
+  text = text.replace(/^ï»¿/, "");
   const firstLine = text.split(/\r?\n/)[0] || "";
   const counts = { ",": 0, ";": 0, "\t": 0 };
   Object.keys(counts).forEach(function (d) { counts[d] = firstLine.split(d).length - 1; });
@@ -2596,7 +2602,7 @@ function csvColumnMap(header) {
 }
 
 function csvNumber(text) {
-  const cleaned = String(text || "").replace(/[₱,\s]/g, "").replace(/^php/i, "");
+  const cleaned = String(text || "").replace(/[â‚±,\s]/g, "").replace(/^php/i, "");
   if (cleaned === "") { return null; }
   const n = Number(cleaned);
   return isNaN(n) ? NaN : n;
@@ -2660,7 +2666,7 @@ byId("csv-export").addEventListener("click", function () {
   saveTextFile("paninda-" + todayText() + ".csv", productsToCsv(), "text/csv");
 });
 byId("csv-template").addEventListener("click", function () {
-  saveTextFile("paninda-template.csv", "﻿" + CSV_COLUMNS.join(",") + "\r\n", "text/csv");
+  saveTextFile("paninda-template.csv", "ï»¿" + CSV_COLUMNS.join(",") + "\r\n", "text/csv");
 });
 byId("csv-pick").addEventListener("click", function () { byId("csv-file").click(); });
 byId("csv-file").addEventListener("change", function () {
@@ -2937,3 +2943,6 @@ if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
 }
 
 document.getElementById("app-version").textContent = APP_VERSION;
+
+
+
