@@ -902,12 +902,14 @@ h3.sub { font-size: 15px; margin: 16px 0 6px; color: var(--text); }
 
 /* Product groups and persistent scan confirmation */
 .category-heading { grid-column: 1 / -1; margin: 14px 0 0; padding: 8px 2px 4px; border-bottom: 1px solid var(--border); font-size: 15px; font-weight: 700; }
-.scanner-product { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 14px; border-radius: 12px; background: #fff; color: #17171a; font-size: 17px; }
+.scanner-product { display: flex; flex-direction: column; gap: 7px; margin: 0 0 12px; }
 .scanner-product[hidden] { display: none; }
-.scanner-product strong { min-width: 0; }
-.scanner-product span { flex: none; font-size: 21px; font-weight: 800; }
+.scanner-product-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; background: #fff; color: #17171a; font-size: 16px; }
+.scanner-product-row strong { min-width: 0; overflow-wrap: anywhere; }
+.scanner-product-row span { flex: none; font-size: 20px; font-weight: 800; }
 .summary-list { margin: 14px 0; padding: 12px 14px; background: var(--accent-soft); border-radius: 12px; }
 
 /* Keep the 7-day chart selector in one horizontal row. */
 #view-week .chart-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
 #view-week .chart-seg > button { width: 100%; min-width: 0; }
+

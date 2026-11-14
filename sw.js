@@ -3,7 +3,7 @@
    - Our own files: try the internet first (so updates arrive), use the saved copy if offline.
    - The scanner library from the internet: use the saved copy first (it never changes). */
 
-const CACHE_NAME = "sari-pos-v12";
+const CACHE_NAME = "sari-pos-v13";
 const FILES = [
   "./",
   "index.html",
@@ -61,6 +61,7 @@ self.addEventListener("fetch", function (event) {
     );
   }
 });
+
 
 
 

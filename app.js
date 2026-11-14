@@ -27,7 +27,7 @@ const SETTINGS_KEY = "pos_settings";      // on/off switches
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
 const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "", closings: [] };
 const BEST_COUNT = 10;
-const APP_VERSION = "v19 - Nov 14";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v20 - Nov 14";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // ----- Icons: simple line icons (instead of emojis). icon("trash") gives the picture as HTML. -----
 const ICONS = {
@@ -996,8 +996,6 @@ let scanner = null;          // the scanner object, while the camera is open
 let scannerMode = "sell";    // "sell" = keep adding to the cart, "fill" = fill the barcode box once
 let lastScanCode = "";
 let lastScanTime = 0;
-let scanResultPending = false;
-let scannerCloseTimer = null;
 
 // Load a script file from the internet. Returns a Promise (a "promise to finish later").
 function loadScript(url) {
@@ -1063,11 +1061,22 @@ function setScannerStatus(text) {
   if (box && !text) { box.hidden = true; box.innerHTML = ""; }
 }
 
+let scannedProducts = [];
 function showScannedProduct(product) {
   const box = document.getElementById("scanner-product");
   if (!box) { return; }
-  box.hidden = !product;
-  box.innerHTML = product ? "<strong>" + escapeHtml(product.name) + "</strong><span>" + peso(product.price) + "</span>" : "";
+  if (!product) {
+    scannedProducts = [];
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  scannedProducts.unshift({ name: product.name, price: product.price });
+  scannedProducts = scannedProducts.slice(0, 3);
+  box.hidden = false;
+  box.innerHTML = scannedProducts.map(function (item) {
+    return '<div class="scanner-product-row"><strong>' + escapeHtml(item.name) + '</strong><span>' + peso(item.price) + '</span></div>';
+  }).join("");
 }
 // The barcode kinds found on store products
 const SCAN_FORMAT_NAMES = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"];
@@ -1084,8 +1093,6 @@ function scanFormats() {
 }
 
 async function openScanner(mode) {
-  if (scannerCloseTimer) { clearTimeout(scannerCloseTimer); scannerCloseTimer = null; }
-  scanResultPending = false;
   scannerMode = mode;
   lastScanCode = "";
   unlockAudio();
@@ -1148,7 +1155,7 @@ async function startLive() {
     // ask for continuous auto-focus (ignored by phones that can't)
     try { scanner.applyVideoConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (e) {}
     setupZoom();
-    setScannerStatus(scannerMode === "sell" ? "Itutok sa barcode. Lalabas ang pangalan at presyo, saka kusang magsasara ang camera." : scannerMode === "receive" ? "Itutok sa mga barcode. Tuloy-tuloy ang scan hanggang pindutin ang Done." : "Itutok sa barcode.");
+    setScannerStatus(scannerMode === "sell" ? "Puwedeng mag-scan ng maraming paninda. Lalabas sa itaas ang huling 3 produkto at presyo. Pindutin ang Done kapag tapos na." : scannerMode === "receive" ? "Itutok sa mga barcode. Tuloy-tuloy ang scan hanggang pindutin ang Done." : "Itutok sa barcode.");
   } catch (error) {
     scanner = null;
     setScannerStatus("Hindi mabuksan ang camera. Payagan ang camera para sa page na ito (iPhone: Settings > Safari > Camera).");
@@ -1196,8 +1203,6 @@ async function stopLive() {
 }
 
 async function closeScanner() {
-  if (scannerCloseTimer) { clearTimeout(scannerCloseTimer); scannerCloseTimer = null; }
-  scanResultPending = false;
   await stopLive();
   document.getElementById("scanner-overlay").hidden = true;
   showScannedProduct(null);
@@ -1205,7 +1210,6 @@ async function closeScanner() {
 
 // Called by the library each time it reads a barcode. force = skip the "same barcode again" check.
 function onScanSuccess(code, force) {
-  if (scanResultPending) { return; }
   // The camera sees the same barcode many times a second. Ignore repeats within 2 seconds.
   const now = Date.now();
   if (force !== true && code === lastScanCode && now - lastScanTime < 2000) {
@@ -1233,13 +1237,8 @@ function onScanSuccess(code, force) {
   const result = addToCart(code);
   beep(result.ok);
   setScannerStatus(result.text);
-    const scannedProduct = findProduct(code);
-  showScannedProduct(result.ok ? scannedProduct : null);
-  if (result.ok) {
-    // Show the product and price briefly, then stop the camera and return to Sell.
-    scanResultPending = true;
-    scannerCloseTimer = window.setTimeout(function () { closeScanner(); }, 800);
-  }
+  const scannedProduct = findProduct(code);
+  if (result.ok && scannedProduct) { showScannedProduct(scannedProduct); }
 }
 
 document.getElementById("camera-btn").addEventListener("click", function () { openScanner("sell"); });
@@ -2943,6 +2942,8 @@ if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
 }
 
 document.getElementById("app-version").textContent = APP_VERSION;
+
+
 
 
 
