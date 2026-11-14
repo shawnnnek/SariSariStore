@@ -41,20 +41,23 @@
       </form>
       <p id="message" class="message" role="status"></p>
       <button type="button" id="last-receipt-btn" class="receipt-btn" hidden><i data-icon="receipt"></i>Resibo ng huling benta</button>
+      <h2 id="cart-title">Benta ngayon</h2>
 
-      <h2>GCash &amp; Maya</h2>
-      <div class="wallet-row">
-        <button type="button" class="wallet-tile gcash" data-wallet="gcash">
-          <span class="wallet-name">GCash</span>
-          <span class="wallet-bal" id="bal-gcash">₱0.00</span>
-          <span class="wallet-sub">Tap for cash in / out</span>
-        </button>
-        <button type="button" class="wallet-tile maya" data-wallet="maya">
-          <span class="wallet-name">Maya</span>
-          <span class="wallet-bal" id="bal-maya">₱0.00</span>
-          <span class="wallet-sub">Tap for cash in / out</span>
-        </button>
-      </div>
+      <!-- ON = the items in the list are taken for ourselves: stock goes down, but no sale and no profit -->
+      <label class="switch-row own-row" for="own-toggle">
+        <span class="switch-text">
+          <span class="switch-title">Para samen</span>
+          <span class="switch-note">Kukunin namin. Mababawas sa stock, wala sa benta at kita.</span>
+        </span>
+        <span class="switch">
+          <input type="checkbox" id="own-toggle" role="switch">
+          <span class="switch-track"><span class="switch-knob"></span></span>
+          <span id="own-state" class="switch-state">OFF</span>
+        </span>
+      </label>
+
+      <ul id="cart-list" class="cart-list"></ul>
+
 
       <h2>Tap ang paninda</h2>
 
@@ -74,22 +77,6 @@
       <input type="search" id="search-input" placeholder="Hanapin ang paninda" aria-label="Hanapin ang paninda">
       <div id="tile-grid" class="tile-grid"></div>
 
-      <h2 id="cart-title">Benta ngayon</h2>
-
-      <!-- ON = the items in the list are taken for ourselves: stock goes down, but no sale and no profit -->
-      <label class="switch-row own-row" for="own-toggle">
-        <span class="switch-text">
-          <span class="switch-title">Para samen</span>
-          <span class="switch-note">Kukunin namin. Mababawas sa stock, wala sa benta at kita.</span>
-        </span>
-        <span class="switch">
-          <input type="checkbox" id="own-toggle" role="switch">
-          <span class="switch-track"><span class="switch-knob"></span></span>
-          <span id="own-state" class="switch-state">OFF</span>
-        </span>
-      </label>
-
-      <ul id="cart-list" class="cart-list"></ul>
     </section>
 
     <!-- ============ TODAY TAB ============ -->
@@ -100,11 +87,6 @@
         <div class="stat"><div class="stat-label">Total</div><div id="stat-total" class="stat-value">₱0.00</div></div>
         <div class="stat"><div class="stat-label">Count</div><div id="stat-count" class="stat-value">0</div></div>
         <div class="stat"><div class="stat-label">Items</div><div id="stat-items" class="stat-value">0</div></div>
-      </div>
-      <div class="stat-row small">
-        <div class="stat"><div class="stat-label">Fees</div><div id="stat-fees" class="stat-value">₱0.00</div></div>
-        <div class="stat"><div class="stat-label">Cash in</div><div id="stat-cashin" class="stat-value">₱0.00</div></div>
-        <div class="stat"><div class="stat-label">Cash out</div><div id="stat-cashout" class="stat-value">₱0.00</div></div>
       </div>
       <p id="stat-hint" class="hint"></p>
 
@@ -149,10 +131,7 @@
         <div class="stat"><div class="stat-label">Count</div><div id="wk-count" class="stat-value">0</div></div>
         <div class="stat"><div class="stat-label">Items</div><div id="wk-items" class="stat-value">0</div></div>
       </div>
-      <div class="stat-row two">
-        <div class="stat profit"><div class="stat-label">Kita</div><div id="wk-profit" class="stat-value">₱0.00</div></div>
-        <div class="stat"><div class="stat-label">Fees</div><div id="wk-fees" class="stat-value">₱0.00</div></div>
-      </div>
+      <div class="stat-row two"><div class="stat profit"><div class="stat-label">Kita</div><div id="wk-profit" class="stat-value">₱0.00</div></div></div>
       <p id="wk-hint" class="hint"></p>
 
       <h2>Transactions</h2>
@@ -201,6 +180,7 @@
 
         <label for="new-name">Pangalan ng paninda</label>
         <input type="text" id="new-name" required>
+        <label for="new-category">Kategorya</label><input type="text" id="new-category" list="product-categories" placeholder="Hal. Canned foods, Body wash, Detergent"><datalist id="product-categories"></datalist>
 
         <div class="two-col">
           <div>
@@ -288,30 +268,6 @@
         <p id="voice-info" class="hint"></p>
       </div>
 
-      <h2>GCash &amp; Maya settings</h2>
-      <div class="add-form">
-        <label for="set-gcash-numbers">GCash number(s)</label>
-        <input type="text" id="set-gcash-numbers" inputmode="tel" autocomplete="off" placeholder="Separate several numbers with commas">
-        <label for="set-gcash-balance">GCash balance now (₱)</label>
-        <input type="number" id="set-gcash-balance" inputmode="decimal" min="0" step="0.01">
-
-        <label for="set-maya-numbers">Maya number(s)</label>
-        <input type="text" id="set-maya-numbers" inputmode="tel" autocomplete="off" placeholder="Separate several numbers with commas">
-        <label for="set-maya-balance">Maya balance now (₱)</label>
-        <input type="number" id="set-maya-balance" inputmode="decimal" min="0" step="0.01">
-
-        <label for="set-cashout-mode">When a customer cashes out</label>
-        <select id="set-cashout-mode">
-          <option value="deduct">Take the fee out of the cash</option>
-          <option value="extra">Customer sends the fee on top</option>
-        </select>
-
-        <button type="button" id="save-wallet-settings" class="primary wide">Save settings</button>
-        <p id="wallet-settings-msg" class="hint"></p>
-        <p class="hint"><strong>Take the fee out of the cash:</strong> on a ₱1,000 cash out with a ₱15 fee, you hand over ₱985 and your wallet goes up ₱1,000. <strong>Customer sends the fee on top:</strong> you hand over ₱1,000 and your wallet goes up ₱1,015.</p>
-        <p class="hint">Cash in and cash out change the balance by themselves. When you load your wallet or withdraw to a bank, type the new balance here. Your numbers stay on this device and in your backup file, not on GitHub.</p>
-      </div>
-
       <h2>Backup</h2>
       <p class="hint">Your data lives on this device only. Save a backup file regularly, and keep a copy somewhere safe (Files, Google Drive, a flash drive).</p>
       <div class="button-row">
@@ -374,42 +330,6 @@
     </div>
   </div>
 
-  <!-- ============ GCASH / MAYA SHEET ============ -->
-  <div id="wallet-overlay" class="overlay" hidden>
-    <form id="wallet-form" class="sheet">
-      <h2 id="wallet-title">GCash</h2>
-      <p id="wallet-numbers" class="hint"></p>
-      <div class="sheet-total">Balance <strong id="wallet-balance">₱0.00</strong></div>
-
-      <div class="seg" role="group" aria-label="Cash in or cash out">
-        <button type="button" id="mode-in" class="active"><span class="flow"><i data-icon="cash"></i><i data-icon="arrow"></i><i data-icon="phone"></i></span><span>Cash in</span></button>
-        <button type="button" id="mode-out"><span class="flow"><i data-icon="phone"></i><i data-icon="arrow"></i><i data-icon="cash"></i></span><span>Cash out</span></button>
-      </div>
-      <p id="mode-hint" class="hint"></p>
-
-      <label for="wallet-amount">Amount (₱)</label>
-      <input type="number" id="wallet-amount" inputmode="decimal" min="1" step="0.01" placeholder="0">
-
-      <div id="wallet-quick" class="quick-cash"></div>
-      <button type="button" id="wallet-speak" class="speak-btn"><i data-icon="speaker"></i>Pakinggan</button>
-
-      <label for="wallet-fee">Fee (₱): filled in automatically, you can change it</label>
-      <input type="number" id="wallet-fee" inputmode="decimal" min="0" step="0.01" placeholder="0">
-
-      <div class="wallet-summary">
-        <div class="sum-row"><span id="sum-cash-label">Cash</span><strong id="sum-cash">-</strong></div>
-        <div class="sum-row"><span>Wallet change</span><strong id="sum-change">-</strong></div>
-        <div class="sum-row"><span>Wallet after</span><strong id="sum-wallet">-</strong></div>
-      </div>
-      <p id="wallet-error" class="hint error-text"></p>
-
-      <div class="button-row">
-        <button type="button" id="wallet-cancel" class="secondary">Cancel</button>
-        <button type="submit" id="wallet-confirm" class="primary" disabled><i data-icon="check"></i>Complete</button>
-      </div>
-    </form>
-  </div>
-
   <!-- ============ CHARGE TO UTANG SHEET ============ -->
   <div id="utang-overlay" class="overlay" hidden>
     <form id="utang-form" class="sheet theme-utang">
@@ -447,8 +367,7 @@
         <p id="debt-pay-message" class="hint error-text"></p>
       </form>
 
-      <button type="button" id="debt-remind" class="secondary wide"><i data-icon="bell"></i>Magpadala ng paalala</button>
-
+      <button type="button" id="debt-remind" class="secondary wide">Magpaalala</button>
       <h2>History</h2>
       <div id="debt-entries" class="today-list"></div>
 
@@ -463,6 +382,8 @@
 
       <label for="edit-name">Pangalan ng paninda</label>
       <input type="text" id="edit-name" required>
+      <label for="edit-category">Kategorya</label><input type="text" id="edit-category" list="product-categories">
+      <div class="two-col"><div><label for="edit-bundle-qty">Bundle: ilan?</label><input type="number" id="edit-bundle-qty" min="2" step="1"></div><div><label for="edit-bundle-price">Presyo ng bundle</label><input type="number" id="edit-bundle-price" min="0" step="0.01"></div></div>
 
       <label>Larawan (para madaling makilala)</label>
       <div class="photo-field">
@@ -504,18 +425,6 @@
       </div>
       <p id="edit-profit" class="profit-line"></p>
 
-      <div class="two-col">
-        <div>
-          <label for="edit-bundle-qty">Bundle: ilan?</label>
-          <input type="number" id="edit-bundle-qty" inputmode="numeric" min="2" step="1" placeholder="hal. 3">
-        </div>
-        <div>
-          <label for="edit-bundle-price">Presyo ng bundle (₱)</label>
-          <input type="number" id="edit-bundle-price" inputmode="decimal" min="0" step="0.01" placeholder="hal. 10">
-        </div>
-      </div>
-      <p class="hint">Optional. Halimbawa: 3 para sa ₱10.</p>
-
       <div class="three">
         <div>
           <label for="edit-stock">Stock</label>
@@ -537,105 +446,21 @@
     </form>
   </div>
 
-  <!-- ============ CAMERA SCANNER ============ -->
-  <!-- ============ DAGDAG STOCK ============ -->
-  <div id="receive-overlay" class="overlay" hidden>
-    <div class="sheet">
-      <h2>Dagdag stock</h2>
-      <p class="hint">I-scan o i-type ang barcode ng bawat dumating. Bawat scan ay +1.</p>
-      <form id="receive-form" class="scan-row">
-        <input type="text" id="receive-input" inputmode="numeric" autocomplete="off" placeholder="Barcode" aria-label="Barcode">
-        <button type="submit" class="secondary">Add</button>
-        <button type="button" id="receive-camera" class="primary"><i data-icon="scan"></i>Scan</button>
-      </form>
-      <p id="receive-message" class="message" role="status"></p>
-      <div id="receive-list" class="product-list"></div>
-      <div class="button-row">
-        <button type="button" id="receive-cancel" class="secondary">Cancel</button>
-        <button type="button" id="receive-done" class="primary"><i data-icon="check"></i>Idagdag sa stock</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ PAMILIHAN ============ -->
-  <div id="shop-overlay" class="overlay" hidden>
-    <div class="sheet">
-      <h2>Pamilihan</h2>
-      <p id="shop-hint" class="hint"></p>
-      <div id="shop-list" class="product-list"></div>
-      <div class="sheet-total">Tinatayang gastos <strong id="shop-total">₱0.00</strong></div>
-      <p id="shop-note" class="hint"></p>
-      <div class="button-row">
-        <button type="button" id="shop-close" class="secondary">Close</button>
-        <button type="button" id="shop-share" class="primary"><i data-icon="share"></i>Ipadala</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ IMPORT / EXPORT (CSV) ============ -->
-  <div id="csv-overlay" class="overlay" hidden>
-    <div class="sheet">
-      <h2>Import / Export</h2>
-
-      <h3 class="sub">I-save ang listahan</h3>
-      <p class="hint">Makukuha mo ang lahat ng paninda bilang CSV file na mabubuksan sa Excel o Google Sheets.</p>
-      <div class="button-row">
-        <button type="button" id="csv-export" class="secondary"><i data-icon="save"></i>Listahan (CSV)</button>
-        <button type="button" id="csv-template" class="secondary">Blangkong template</button>
-      </div>
-
-      <h3 class="sub">Mag-import ng paninda</h3>
-      <p class="hint">Columns: barcode, name, price, cost, stock, reorder, bundle_qty, bundle_price. Kailangan lang ang barcode, name at price. Sa Excel, gawing <strong>Text</strong> ang barcode column bago mag-type para hindi masira ang mga numero. Save as <strong>CSV</strong>.</p>
-      <button type="button" id="csv-pick" class="secondary wide"><i data-icon="share"></i>Pumili ng CSV file</button>
-      <input type="file" id="csv-file" accept=".csv,text/csv,text/plain" hidden>
-      <label class="check-row"><input type="checkbox" id="csv-stock"> Palitan din ang stock ng mga dati nang paninda</label>
-      <div id="csv-preview" class="csv-preview"></div>
-      <div class="button-row">
-        <button type="button" id="csv-close" class="secondary">Close</button>
-        <button type="button" id="csv-import" class="primary" disabled>I-import</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ SARA NA ANG TINDAHAN (END OF DAY) ============ -->
-  <div id="close-overlay" class="overlay" hidden>
+    <div id="close-overlay" class="overlay" hidden>
     <div class="sheet">
       <h2>Sara na ang tindahan</h2>
       <p id="close-date" class="hint"></p>
-
-      <label for="close-start">Panimulang cash sa drawer (₱)</label>
-      <input type="number" id="close-start" inputmode="decimal" min="0" step="0.01" placeholder="0">
-
-      <div id="close-rows" class="wallet-summary"></div>
-
-      <label for="close-counted">Bilang ng cash sa drawer ngayon (₱)</label>
-      <input type="number" id="close-counted" inputmode="decimal" min="0" step="0.01" placeholder="Bilangin ang pera">
+      <label for="close-start">Panimulang cash sa drawer</label><input type="number" id="close-start" min="0" step="0.01">
+      <div id="close-rows" class="summary-list"></div>
+      <label for="close-counted">Bilang ng cash sa drawer ngayon</label><input type="number" id="close-counted" min="0" step="0.01">
       <div id="close-diff" class="change-row"></div>
-
-      <h3 class="sub">GCash at Maya (optional)</h3>
-      <div class="two-col">
-        <div>
-          <label for="close-gcash">Balance sa GCash app</label>
-          <input type="number" id="close-gcash" inputmode="decimal" min="0" step="0.01">
-        </div>
-        <div>
-          <label for="close-maya">Balance sa Maya app</label>
-          <input type="number" id="close-maya" inputmode="decimal" min="0" step="0.01">
-        </div>
-      </div>
-      <p id="close-wallet-diff" class="hint"></p>
-
-      <h3 class="sub">Mga nakaraang closing</h3>
-      <div id="close-history" class="today-list"></div>
-
-      <div class="button-row">
-        <button type="button" id="close-cancel" class="secondary">Close</button>
-        <button type="button" id="close-save" class="primary">I-save</button>
-      </div>
+      <h3 class="sub">Mga nakaraang closing</h3><div id="close-history" class="today-list"></div>
+      <div class="button-row"><button type="button" id="close-cancel" class="secondary">Close</button><button type="button" id="close-save" class="primary">I-save</button></div>
     </div>
   </div>
-
-  <!-- ============ RESIBO (RECEIPT) ============ -->
+  <div id="receive-overlay" class="overlay" hidden><div class="sheet"><h2>Dagdag stock</h2><p class="hint">I-scan o i-type ang barcode ng dumating.</p><form id="receive-form" class="scan-row"><input id="receive-input" type="text" autocomplete="off"><button type="submit" class="secondary">Add</button><button type="button" id="receive-camera" class="primary">Scan</button></form><p id="receive-message" class="message"></p><div id="receive-list" class="today-list"></div><div class="button-row"><button type="button" id="receive-cancel" class="secondary">Cancel</button><button type="button" id="receive-done" class="primary" disabled>Dagdag stock</button></div></div></div>
+  <div id="shop-overlay" class="overlay" hidden><div class="sheet"><h2>Pamilihan</h2><p id="shop-hint" class="hint"></p><div id="shop-list" class="product-list"></div><p id="shop-note" class="hint"></p><div class="sheet-total">Tinatayang gastos <strong id="shop-total">₱0.00</strong></div><div class="button-row"><button type="button" id="shop-close" class="secondary">Close</button><button type="button" id="shop-share" class="primary">I-share</button></div></div></div>
+  <div id="csv-overlay" class="overlay" hidden><div class="sheet"><h2>Import / Export CSV</h2><p class="hint">I-save ang listahan sa CSV o mag-import ng paninda.</p><div class="button-row"><button type="button" id="csv-export" class="secondary">Export</button><button type="button" id="csv-template" class="secondary">Template</button><button type="button" id="csv-pick" class="primary">Pumili ng file</button></div><input id="csv-file" type="file" accept=".csv,text/csv" hidden><label class="check-row"><input id="csv-stock" type="checkbox">Palitan din ang stock</label><div id="csv-preview" class="csv-preview"></div><div class="button-row"><button type="button" id="csv-close" class="secondary">Close</button><button type="button" id="csv-import" class="primary" disabled>Import</button></div></div></div>  <!-- ============ RESIBO (RECEIPT) ============ -->
   <div id="receipt-overlay" class="overlay" hidden>
     <div class="sheet">
       <div id="receipt-paper" class="receipt-paper"></div>
@@ -658,7 +483,7 @@
         <input type="range" id="zoom-slider" min="1" max="3" step="0.1" value="1" aria-label="Zoom">
         <span id="zoom-value">1x</span>
       </div>
-      <p id="scanner-status" class="scanner-status"></p>
+      <p id="scanner-status" class="scanner-status"></p><div id="scanner-product" class="scanner-product" aria-live="polite" hidden></div>
     </div>
   </div>
 
