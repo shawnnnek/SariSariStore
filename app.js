@@ -1,4 +1,4 @@
-﻿/* =====================================================
+/* =====================================================
    My Sari-Sari POS - app.js (phone-friendly version)
    HTML = the structure, CSS = the look, JavaScript = what happens when you tap or scan.
    ===================================================== */
@@ -18,19 +18,32 @@ const DEFAULT_PRODUCTS = [
 const PRODUCTS_KEY = "pos_products";
 const SALES_KEY = "pos_sales";
 const LAST_BACKUP_KEY = "pos_last_backup";
-try { localStorage.removeItem("pos_ewallet"); localStorage.removeItem("pos_ewallet_tx"); } catch (error) {}
 
+const EWALLET_KEY = "pos_ewallet";        // old GCash / Maya data: no longer used, but kept safe in backups
+const EWALLET_TX_KEY = "pos_ewallet_tx";  // old GCash / Maya records: kept, not shown
 const LEDGER_KEY = "pos_utang";           // utang: charges and payments
 const OWN_KEY = "pos_own";                // items taken "para samen" (for ourselves)
+const LOAD_KEY = "pos_load";              // mobile load sold (v15)
+const HELD_KEY = "pos_held";              // sales put on hold: "Hintayin muna" (v15)
 const SETTINGS_KEY = "pos_settings";      // on/off switches
 
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
-const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "", closings: [] };
+const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "", closings: [],
+  viewMode: "best", minKita: 1, backupSnooze: "" };
 const BEST_COUNT = 10;
-const APP_VERSION = "v20 - Nov 14";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v15 - Nov 15";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // ----- Icons: simple line icons (instead of emojis). icon("trash") gives the picture as HTML. -----
 const ICONS = {
+  tag: '<path d="M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0z"/><circle cx="8" cy="8" r="1.3"/>',
+  pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+  play: '<path d="M7 4.5v15l12-7.5z"/>',
+  folder: '<path d="M3.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2.5H19a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/>',
+  chevron: '<path d="M8 10l4 4 4-4"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
+  warn: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>',
+  signal: '<path d="M4 18v-2M9 18v-5M14 18V9M19 18V5"/>',
   cart: '<circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.6 12.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"/>',
   clipboard: '<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/>',
   calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
@@ -69,16 +82,23 @@ function drawIcons() {
   });
 }
 
+// Old GCash / Maya data (the feature was removed in v15). We only carry it along so a backup never loses it.
+const DEFAULT_EWALLET = {};
+
 // Variables that hold the data while the page is open.
 let products = loadData(PRODUCTS_KEY, DEFAULT_PRODUCTS);
 let sales = loadData(SALES_KEY, []);   // finished sales
 let cart = [];                          // items in the sale happening right now
+let ewallet = loadData(EWALLET_KEY, DEFAULT_EWALLET);
+let ewalletTx = loadData(EWALLET_TX_KEY, []);
+let loads = loadData(LOAD_KEY, []);      // mobile load sales
+let held = loadData(HELD_KEY, []);       // sales waiting: [{ id, ts, items, discount }]
+let discount = null;                     // the discount on the current sale: { mode: "peso" | "pct", value }
 let ledger = loadData(LEDGER_KEY, []);
 let ownUse = loadData(OWN_KEY, []);      // "para samen": stock goes down, but it is not a sale and has no profit
 let settings = Object.assign({}, DEFAULT_SETTINGS, loadData(SETTINGS_KEY, DEFAULT_SETTINGS));
 let lastSale = null;                     // the newest finished sale (for the receipt button)
 let ownMode = false;                     // true while the Para samen switch is ON (not saved)
-
 
 
 /* ---------- 2. SAVING AND LOADING ---------- */
@@ -101,8 +121,12 @@ function saveData() {
   try {
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
     localStorage.setItem(SALES_KEY, JSON.stringify(sales));
+    localStorage.setItem(EWALLET_KEY, JSON.stringify(ewallet));
+    localStorage.setItem(EWALLET_TX_KEY, JSON.stringify(ewalletTx));
     localStorage.setItem(LEDGER_KEY, JSON.stringify(ledger));
     localStorage.setItem(OWN_KEY, JSON.stringify(ownUse));
+    localStorage.setItem(LOAD_KEY, JSON.stringify(loads));
+    localStorage.setItem(HELD_KEY, JSON.stringify(held));
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch (error) {
     console.log("Could not save", error);
@@ -111,18 +135,16 @@ function saveData() {
 
 
 /* ---------- 3. HELPER FUNCTIONS ---------- */
-function byId(id) { return document.getElementById(id); }
-function round2(n) { return Math.round(n * 100) / 100; }
 
-// Turn 12 into "\u20B112.00"
+// Turn 12 into "₱12.00"
 function peso(amount) {
-  // 1234.5 becomes "\u20B11,234.50"
-  return "\u20B1" + amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // 1234.5 becomes "₱1,234.50"
+  return "₱" + amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Like peso(), but a whole amount drops the ".00": 1500 becomes "\u20B11,500"
+// Like peso(), but a whole amount drops the ".00": 1500 becomes "₱1,500"
 function pesoShort(amount) {
-  return Number.isInteger(amount) ? "\u20B1" + amount.toLocaleString("en-US") : peso(amount);
+  return Number.isInteger(amount) ? "₱" + amount.toLocaleString("en-US") : peso(amount);
 }
 
 // Make text safe before putting it into the page
@@ -224,7 +246,7 @@ function addToCart(barcode) {
   if (!product) {
     const text = "Wala sa listahan: " + barcode;
     showMessage(text, "error");
-    return { ok: false, text: text };
+    return { ok: false, text: text, missing: String(barcode) };
   }
 
   const inCart = cart.find(function (item) {
@@ -236,7 +258,7 @@ function addToCart(barcode) {
   if (alreadyInCart + 1 > product.stock) {
     const text = "Kulang ang stock ng " + product.name + " (" + product.stock + " na lang).";
     showMessage(text, "error");
-    return { ok: false, text: text };
+    return { ok: false, text: text, product: product, qty: alreadyInCart };
   }
 
   if (inCart) {
@@ -248,7 +270,7 @@ function addToCart(barcode) {
   const text = product.name + " - " + peso(product.price);
   showMessage(text, "ok");
   renderSell();
-  return { ok: true, text: text };
+  return { ok: true, text: text, product: product, qty: alreadyInCart + 1 };
 }
 
 // Change the quantity of a cart line by +1 or -1
@@ -302,12 +324,29 @@ function readBundle(prefix) {
   return { bundle: { qty: qty, price: price } };
 }
 
-function cartTotal() {
+// The price of everything in the cart, before any discount
+function cartSubtotal() {
   let total = 0;
   cart.forEach(function (item) {
     total = total + lineTotal(item);
   });
   return round2(total);
+}
+
+// BAWAS (discount for suki): pesos off, or a percent off. It can never be more than the subtotal.
+function calcDiscount(sub, d) {
+  if (!d || !(d.value > 0)) { return 0; }
+  const off = d.mode === "pct" ? sub * d.value / 100 : d.value;
+  return round2(Math.max(0, Math.min(off, sub)));
+}
+function discountAmount() {
+  if (!discount || cart.length === 0) { return 0; }
+  return calcDiscount(cartSubtotal(), discount);
+}
+
+// What the customer pays
+function cartTotal() {
+  return round2(cartSubtotal() - discountAmount());
 }
 
 function cartItemCount() {
@@ -345,6 +384,8 @@ function chargeSale(cash, utang) {
   }
 
   const total = cartTotal();
+  const off = discountAmount();
+  const subtotal = cartSubtotal();
 
   // Subtract the sold quantities from stock.
   cart.forEach(function (item) {
@@ -359,6 +400,10 @@ function chargeSale(cash, utang) {
     total: total,
     items: cartLines()
   };
+  if (off > 0) {
+    sale.discount = off;          // pesos taken off (suki)
+    sale.subtotal = subtotal;     // the price before the discount
+  }
   if (utang) {
     // Not paid yet: remember who owes it, and add a charge to the utang ledger.
     sale.utang = { name: utang.name, takenBy: utang.takenBy };
@@ -385,6 +430,7 @@ function chargeSale(cash, utang) {
   }
 
   cart = [];
+  discount = null;
   renderAll();
   showLastReceiptButton();
 }
@@ -408,6 +454,7 @@ function takeForUs() {
   });
   ownUse.push({ ts: Date.now(), date: todayText(), time: new Date().toLocaleTimeString(), items: items });
   cart = [];
+  discount = null;
   saveData();
   setOwnMode(false);                       // back to normal selling
   renderAll();
@@ -434,22 +481,126 @@ function renderSwitches() {
 /* ---------- 6. DRAWING THE SCREEN ----------
    "render" functions rebuild part of the page from the current data. */
 
-// The tap-to-add grid. Bestsellers come first.
+// ----- Categories (kategorya): canned goods, body wash, detergent... -----
+const CATEGORY_SUGGESTIONS = ["Canned goods", "Noodles", "Coffee", "Softdrinks at Juice", "Snacks", "Candy",
+  "Biscuits", "Body wash / Sabon", "Shampoo", "Detergent", "Toothpaste", "Pangluto", "Gamit sa bahay"];
+let openCatKey = null;                 // the category that is open on the Benta page (one at a time)
+let openProdCats = {};                 // the categories that are open in the Paninda tab
+
+function categoryName(p) { return String(p.category || "").trim().replace(/\s+/g, " "); }
+
+function categoryColor(name) {
+  return LETTER_COLORS[hashText(String(name).toLowerCase()) % LETTER_COLORS.length];
+}
+
+// [{ key, name, items }] named categories A-Z, then the products with no category.
+function groupByCategory(list) {
+  const map = {};
+  list.forEach(function (p) {
+    const name = categoryName(p);
+    const key = name.toLowerCase();
+    if (!map[key]) { map[key] = { key: key, name: name || "Walang kategorya", items: [] }; }
+    map[key].items.push(p);
+  });
+  const groups = Object.keys(map).map(function (k) { return map[k]; });
+  groups.forEach(function (g) {
+    g.items.sort(function (a, b) { return a.name.localeCompare(b.name); });
+  });
+  groups.sort(function (a, b) {
+    if (a.key === "") { return 1; }
+    if (b.key === "") { return -1; }
+    return a.name.localeCompare(b.name);
+  });
+  return groups;
+}
+
+// the <datalist> that helps when typing a category
+function renderCategoryOptions() {
+  const seen = {};
+  const names = [];
+  products.map(categoryName).concat(CATEGORY_SUGGESTIONS).forEach(function (n) {
+    if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = true; names.push(n); }
+  });
+  byId("category-options").innerHTML = names.map(function (n) { return '<option value="' + escapeHtml(n) + '">'; }).join("");
+}
+
+// One product button on the Benta page
+function tileHtml(p) {
+  const inCart = cart.find(function (i) { return i.barcode === p.barcode; });
+  const qty = inCart ? inCart.qty : 0;
+  const soldOut = p.stock - qty <= 0;
+  const stockText = p.stock <= 0 ? "Ubos na" : (p.stock - qty) + " pa";
+  const low = p.stock - qty <= p.reorder;            // running low: shown in red
+  return '<button class="tile' + (qty > 0 ? " in-cart" : "") + '" data-barcode="' + escapeHtml(p.barcode) + '"' + (soldOut ? " disabled" : "") + ">" +
+    thumbHtml(p) +
+    '<span class="tile-text">' +
+      '<span class="tile-name">' + escapeHtml(p.name) + "</span>" +
+      '<span class="tile-price">' + peso(p.price) + "</span>" +
+      (p.bundle ? '<span class="tile-bundle">' + bundleText(p.bundle) + "</span>" : "") +
+      '<span class="tile-stock' + (low ? " low" : "") + '">' + stockText + "</span>" +
+    "</span>" +
+    (qty > 0 ? '<span class="tile-badge">' + qty + "</span>" : "") +
+    "</button>";
+}
+
+// The Benta page has two ways to look at the paninda: "Best sellers" (the tap grid) and "Kategorya" (folders).
 function renderTiles() {
   const query = document.getElementById("search-input").value.trim().toLowerCase();
   const sold = soldCounts();
+  const byCategory = settings.viewMode === "cat";
+
+  byId("mode-best").classList.toggle("active", !byCategory);
+  byId("mode-cat").classList.toggle("active", byCategory);
+  byId("best-toggle").closest("label").hidden = byCategory;
 
   let list = products
     .filter(function (p) {
-      return query === "" || p.name.toLowerCase().includes(query) || p.barcode.includes(query) || (p.category || "").toLowerCase().includes(query);
+      return query === "" || p.name.toLowerCase().includes(query) || p.barcode.includes(query) ||
+        categoryName(p).toLowerCase().includes(query);
     })
     .sort(function (a, b) {
       return (sold[b.barcode] || 0) - (sold[a.barcode] || 0) || a.name.localeCompare(b.name);
     });
 
-  // Top 10 switch ON: show only the best sellers. Searching always looks through everything.
   const note = document.getElementById("best-note");
-  if (settings.bestOnly && query === "") {
+  const grid = byId("tile-grid");
+  const catBox = byId("cat-list");
+
+  // Kategorya view (and no search): folders you can open, one at a time
+  if (byCategory && query === "") {
+    grid.hidden = true;
+    catBox.hidden = false;
+    const groups = groupByCategory(list);
+    let html = "";
+    groups.forEach(function (g) {
+      const open = openCatKey === g.key;
+      const col = categoryColor(g.name);
+      let inCartQty = 0;
+      g.items.forEach(function (p) {
+        const line = cart.find(function (i) { return i.barcode === p.barcode; });
+        if (line) { inCartQty += line.qty; }
+      });
+      html += '<div class="cat-group' + (open ? " open" : "") + '">' +
+        '<button type="button" class="cat-head" data-cat="' + escapeHtml(g.key) + '" aria-expanded="' + open + '">' +
+          '<span class="cat-icon" style="background:' + col[0] + ";color:" + col[1] + '">' + icon("folder") + "</span>" +
+          '<span class="cat-name">' + escapeHtml(g.name) + "</span>" +
+          (inCartQty > 0 ? '<span class="tile-badge cat-badge">' + inCartQty + "</span>" : "") +
+          '<span class="cat-count">' + g.items.length + "</span>" +
+          '<span class="cat-chevron">' + icon("chevron") + "</span>" +
+        "</button>" +
+        (open ? '<div class="tile-grid cat-body">' + g.items.map(tileHtml).join("") + "</div>" : "") +
+        "</div>";
+    });
+    catBox.innerHTML = html || '<p class="empty">Wala pang paninda.</p>';
+    note.textContent = groups.length + " kategorya. Tap ang kategorya para buksan.";
+    return;
+  }
+
+  grid.hidden = false;
+  catBox.hidden = true;
+
+  // Top 10 switch ON: show only the best sellers. Searching always looks through everything.
+  if (settings.bestOnly && query === "" && !byCategory) {
     // Products with the "front page" switch ON always show. Best sellers fill the rest up to 10.
     const pinned = list.filter(function (p) { return p.front; });
     const others = list.filter(function (p) { return !p.front; });
@@ -457,45 +608,22 @@ function renderTiles() {
     note.textContent = products.length > list.length
       ? "Ipinapakita ang " + list.length + " sa " + products.length + " na paninda. Gamitin ang search para sa iba."
       : "Lahat ng " + products.length + " paninda ay nakikita.";
-  } else if (settings.bestOnly) {
+  } else if (query !== "") {
     note.textContent = "Search: lahat ng paninda ay hinahanap.";
   } else {
     note.textContent = "Lahat ng " + products.length + " paninda ang nakikita.";
   }
 
-  let html = "";
-  const groups = {};
-  list.forEach(function (p) { const category = String(p.category || "Iba pa").trim() || "Iba pa"; (groups[category] = groups[category] || []).push(p); });
-  Object.keys(groups).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (category) {
-    html += '<h3 class="category-heading">' + escapeHtml(category) + '</h3>';
-    groups[category].forEach(function (p) {
-    const inCart = cart.find(function (i) { return i.barcode === p.barcode; });
-    const qty = inCart ? inCart.qty : 0;
-    const soldOut = p.stock - qty <= 0;
-    const stockText = p.stock <= 0 ? "Ubos na" : (p.stock - qty) + " pa";
-
-    const low = p.stock - qty <= p.reorder;            // running low: shown in red
-    html += '<button class="tile' + (qty > 0 ? " in-cart" : "") + '" data-barcode="' + escapeHtml(p.barcode) + '"' + (soldOut ? " disabled" : "") + ">" +
-      thumbHtml(p) +
-      '<span class="tile-text">' +
-        '<span class="tile-name">' + escapeHtml(p.name) + "</span>" +
-        '<span class="tile-price">' + peso(p.price) + "</span>" +
-        (p.bundle ? '<span class="tile-bundle">' + bundleText(p.bundle) + "</span>" : "") +
-        '<span class="tile-stock' + (low ? " low" : "") + '">' + stockText + "</span>" +
-      "</span>" +
-      (qty > 0 ? '<span class="tile-badge">' + qty + "</span>" : "") +
-      "</button>";
-    });
-  });
-
+  let html = list.map(tileHtml).join("");
   if (list.length === 0) {
     html = '<p class="empty">Walang nahanap na paninda.</p>';
   }
-  document.getElementById("tile-grid").innerHTML = html;
+  grid.innerHTML = html;
 }
 
 function renderCart() {
   let html = "";
+  if (cart.length === 0) { discount = null; }
 
   cart.forEach(function (item) {
     const cartProduct = findProduct(item.barcode);
@@ -516,6 +644,29 @@ function renderCart() {
     html = '<li class="empty">Wala pa. Tap ang paninda o i-scan ang barcode.</li>';
   }
   document.getElementById("cart-list").innerHTML = html;
+  renderCartExtras();
+}
+
+// The Bawas (discount) line and the Hintayin muna (hold) button under the cart
+function renderCartExtras() {
+  const off = discountAmount();
+  const row = byId("disc-row");
+  row.hidden = cart.length === 0;
+  if (off > 0) {
+    const label = discount.mode === "pct" ? "Bawas " + discount.value + "%" : "Bawas";
+    byId("disc-text").innerHTML = '<span class="disc-label">' + label + "</span>" +
+      '<span class="disc-amount">&minus;' + peso(off) + "</span>";
+    byId("disc-btn").innerHTML = icon("tag") + "Palitan";
+    byId("disc-clear").hidden = false;
+  } else {
+    byId("disc-text").innerHTML = '<span class="disc-label">Bawas para sa suki</span>';
+    byId("disc-btn").innerHTML = icon("tag") + "Bawas";
+    byId("disc-clear").hidden = true;
+  }
+  byId("hold-btn").hidden = cart.length === 0 || ownMode;
+  byId("subtotal-note").hidden = off <= 0;
+  byId("subtotal-note").textContent = "Presyo " + peso(cartSubtotal()) + " − bawas " + peso(off);
+  renderHeld();
 }
 
 function renderCheckoutBar() {
@@ -531,45 +682,91 @@ function renderSell() {
   renderTiles();
   renderCart();
   renderCheckoutBar();
+  renderBackupBanner();
+}
+
+// Kita for ONE piece. With a bundle price (3 for 10) the cheapest piece price counts.
+// null = puhunan not known.
+function unitKita(p) {
+  if (typeof p.cost !== "number") { return null; }
+  let kita = p.price - p.cost;
+  if (p.bundle && p.bundle.qty >= 2) {
+    kita = Math.min(kita, p.bundle.price / p.bundle.qty - p.cost);
+  }
+  return round2(kita);
+}
+
+// true if the kita is below the minimum set in Paninda (default 1 peso)
+function lowMargin(p) {
+  const kita = unitKita(p);
+  return kita !== null && kita < (settings.minKita || 0);
+}
+
+function productRowHtml(p) {
+  const needsRestock = p.stock <= p.reorder;
+  const status = needsRestock
+    ? '<span class="pill restock">RESTOCK</span>'
+    : '<span class="pill ok-status">OK</span>';
+
+  let profitLine = '<div class="product-profit none">walang puhunan</div>';
+  if (typeof p.cost === "number") {
+    const diff = round2(p.price - p.cost);
+    if (diff < 0) {
+      profitLine = '<div class="product-profit loss">Lugi ' + peso(-diff) + "</div>";
+    } else if (lowMargin(p)) {
+      profitLine = '<div class="product-profit low">Kita ' + peso(unitKita(p)) + " &middot; mababa</div>";
+    } else {
+      profitLine = '<div class="product-profit">Kita ' + peso(diff) + "</div>";
+    }
+  }
+
+  return '<div class="product-row" data-barcode="' + escapeHtml(p.barcode) + '">' +
+    thumbHtml(p, "small") +
+    '<div class="product-main"><div class="product-name">' + (p.front ? icon("star", "ico-star") : "") + escapeHtml(p.name) + "</div>" +
+    '<div class="product-code">' + escapeHtml(p.barcode) + "</div></div>" +
+    '<div class="product-nums"><div>' + peso(p.price) + "</div>" +
+    '<div class="product-stock">Stock: ' + p.stock + "</div>" + profitLine + "</div>" +
+    status +
+    "</div>";
 }
 
 function renderProducts() {
   const query = document.getElementById("product-search").value.trim().toLowerCase();
-  let html = "";
-  let shown = 0;
-
-  products.forEach(function (p) {
-    if (query !== "" && !p.name.toLowerCase().includes(query) && !p.barcode.includes(query)) {
-      return;
-    }
-    shown++;
-    const needsRestock = p.stock <= p.reorder;
-    const status = needsRestock
-      ? '<span class="pill restock">RESTOCK</span>'
-      : '<span class="pill ok-status">OK</span>';
-
-    let profitLine = '<div class="product-profit none">walang puhunan</div>';
-    if (typeof p.cost === "number") {
-      const diff = round2(p.price - p.cost);
-      profitLine = diff >= 0
-        ? '<div class="product-profit">Kita ' + peso(diff) + "</div>"
-        : '<div class="product-profit loss">Lugi ' + peso(-diff) + "</div>";
-    }
-
-    html += '<div class="product-row" data-barcode="' + escapeHtml(p.barcode) + '">' +
-      thumbHtml(p, "small") +
-      '<div class="product-main"><div class="product-name">' + (p.front ? icon("star", "ico-star") : "") + escapeHtml(p.name) + "</div>" +
-      '<div class="product-code">' + escapeHtml(p.barcode) + "</div></div>" +
-      '<div class="product-nums"><div>' + peso(p.price) + "</div>" +
-      '<div class="product-stock">Stock: ' + p.stock + "</div>" + profitLine + "</div>" +
-      status +
-      "</div>";
+  const matches = products.filter(function (p) {
+    return query === "" || p.name.toLowerCase().includes(query) || p.barcode.includes(query) ||
+      categoryName(p).toLowerCase().includes(query) || (query === "mababa" && lowMargin(p));
   });
 
-  if (shown === 0) {
+  let html = "";
+  if (matches.length === 0) {
     html = '<p class="empty">' + (products.length === 0 ? "Wala pang paninda. Magdagdag sa baba." : "Walang nahanap na paninda.") + "</p>";
+  } else if (query !== "") {
+    html = matches.map(productRowHtml).join("");       // searching: a plain list
+  } else {
+    // folders by category, closed until you tap them
+    groupByCategory(matches).forEach(function (g) {
+      const open = !!openProdCats[g.key];
+      const col = categoryColor(g.name);
+      const restock = g.items.filter(function (p) { return p.stock <= p.reorder; }).length;
+      html += '<div class="cat-group' + (open ? " open" : "") + '">' +
+        '<button type="button" class="cat-head" data-pcat="' + escapeHtml(g.key) + '" aria-expanded="' + open + '">' +
+          '<span class="cat-icon" style="background:' + col[0] + ";color:" + col[1] + '">' + icon("folder") + "</span>" +
+          '<span class="cat-name">' + escapeHtml(g.name) + "</span>" +
+          (restock > 0 ? '<span class="pill restock">' + restock + " RESTOCK</span>" : "") +
+          '<span class="cat-count">' + g.items.length + "</span>" +
+          '<span class="cat-chevron">' + icon("chevron") + "</span>" +
+        "</button>" +
+        (open ? '<div class="cat-rows">' + g.items.map(productRowHtml).join("") + "</div>" : "") +
+        "</div>";
+    });
   }
   document.getElementById("product-list").innerHTML = html;
+
+  const lowCount = products.filter(lowMargin).length;
+  byId("low-margin-hint").textContent = lowCount > 0
+    ? lowCount + " paninda ang mababa ang kita (mas mababa sa " + peso(settings.minKita || 0) + " bawat piraso). I-type ang \"mababa\" sa search para makita sila."
+    : "";
+  renderCategoryOptions();
 }
 
 // Today's total and number of transactions shown at the top of the page
@@ -580,13 +777,18 @@ function renderSummary() {
 }
 
 // Everything that happened on one day (like "2026-11-09"), newest first:
-// product sales, utang payments received, and Para samen.
+// product sales, mobile load, utang payments received, and Para samen.
 function dayEvents(dateString) {
   const events = [];
 
   sales.forEach(function (sale, index) {
     if (sale.date === dateString) {
       events.push({ kind: "sale", ts: sale.ts || 0, order: index, data: sale });
+    }
+  });
+  loads.forEach(function (entry, index) {
+    if (entry.date === dateString) {
+      events.push({ kind: "load", ts: entry.ts || 0, order: index, data: entry });
     }
   });
   ledger.forEach(function (entry, index) {
@@ -636,23 +838,28 @@ function saleProfit(sale) {
       known += item.qty;
     }
   });
+  if (sale.discount > 0 && known > 0) {
+    profit -= sale.discount;            // a discount comes out of the kita
+  }
   return { profit: round2(profit), known: known, unknown: unknown };
 }
 
 // The numbers of one day.
-// Total = sales paid in cash + utang payments received.
+// Total = sales paid in cash + load sold + utang payments received.
 // Sales charged to utang are NOT in the total until the person pays.
-// Kita (profit) = profit on the products. Para samen is not in it.
+// Kita (profit) = profit on the products + the fees on load. Para samen is not in it.
 function dayStats(dateString) {
   const stats = {
-    total: 0, count: 0, items: 0, utangCharged: 0,
+    total: 0, count: 0, items: 0, loads: 0, loadProfit: 0, discounts: 0, utangCharged: 0,
     profitItems: 0, profitUtang: 0, noCost: 0, ownItems: 0, ownCost: 0, profit: 0
   };
+
   dayEvents(dateString).forEach(function (event) {
     const d = event.data;
     if (event.kind === "sale") {
       stats.count++;
       d.items.forEach(function (item) { stats.items += item.qty; });
+      if (d.discount > 0) { stats.discounts += d.discount; }
       const sp = saleProfit(d);
       stats.profitItems += sp.profit;
       stats.noCost += sp.unknown;
@@ -662,6 +869,11 @@ function dayStats(dateString) {
       } else {
         stats.total += d.total;
       }
+    } else if (event.kind === "load") {
+      stats.count++;
+      stats.loads += d.total;
+      stats.loadProfit += d.fee;
+      stats.total += d.total;
     } else if (event.kind === "payment") {
       stats.count++;
       stats.total += d.amount;
@@ -673,17 +885,21 @@ function dayStats(dateString) {
       });
     }
   });
-  stats.profit = stats.profitItems;
-  Object.keys(stats).forEach(function (key) { stats[key] = round2(stats[key]); });
+
+  stats.profit = stats.profitItems + stats.loadProfit;
+  Object.keys(stats).forEach(function (key) {
+    stats[key] = round2(stats[key]);
+  });
   return stats;
 }
+
 function todayStats() {
   return dayStats(todayText());
 }
 
 // Notes under the profit boxes (the same words for Today and for the 7 Days page)
 function profitNotes(stats) {
-  let text = "Kita = benta \u2212 puhunan.";
+  let text = "Kita = benta \u2212 puhunan \u2212 bawas + kita sa load.";
   if (stats.profitUtang > 0) {
     text += " Kasama ang kita sa utang na hindi pa bayad (" + peso(stats.profitUtang) + ").";
   }
@@ -706,29 +922,57 @@ function ownNotes(stats) {
 // showDay = also write the day, like "Mon, Nov 9".
 function txnHtml(events, showDay, emptyText) {
   let html = "";
+
   events.forEach(function (event) {
     const before = html.length;
     const d = event.data;
     const when = (showDay ? escapeHtml(dayLabel(d.date)) + " &middot; " : "") + escapeHtml(d.time);
+
     if (event.kind === "sale") {
       let lines = "";
       d.items.forEach(function (item) {
-        lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span>" + '<span class="line-amount">' + peso(lineTotal(item)) + "</span></li>";
+        lines += "<li><span>" + item.qty + " &times; " + escapeHtml(item.name) + "</span>" +
+          '<span class="line-amount">' + peso(lineTotal(item)) + "</span></li>";
       });
+
       const parts = [];
       let tag = '<span class="tag sale">SALE</span>';
       if (d.utang) {
         tag = '<span class="tag utang">UTANG &middot; ' + escapeHtml(d.utang.name) + "</span>";
         parts.push("Nasa utang" + (d.utang.takenBy ? " &middot; kumuha: " + escapeHtml(d.utang.takenBy) : ""));
       } else if (typeof d.cash === "number") {
+        // older sales may not have cash/change saved
         parts.push("Cash " + peso(d.cash) + " &middot; Sukli " + peso(d.change));
       }
+      if (d.discount > 0) {
+        parts.push("Bawas \u2212" + peso(d.discount));
+      }
       const sp = saleProfit(d);
-      if (sp.known > 0) { parts.push("Kita " + peso(sp.profit)); }
+      if (sp.known > 0) {
+        parts.push("Kita " + peso(sp.profit));
+      }
       const pay = parts.length ? '<div class="txn-pay">' + parts.join(" &middot; ") + "</div>" : "";
-      html += '<div class="txn ' + (d.utang ? "k-utang" : "k-sale") + '">' + '<div class="txn-head"><span class="txn-time">' + when + tag + "</span>" + '<span class="txn-total">' + peso(d.total) + "</span></div>" + '<ul class="txn-items">' + lines + "</ul>" + pay + "</div>";
+
+      html += '<div class="txn ' + (d.utang ? "k-utang" : "k-sale") + '">' +
+        '<div class="txn-head"><span class="txn-time">' + when + tag + "</span>" +
+        '<span class="txn-total">' + peso(d.total) + "</span></div>" +
+        '<ul class="txn-items">' + lines + "</ul>" + pay + "</div>";
+
+    } else if (event.kind === "load") {
+      const loadParts = ["Load " + peso(d.amount) + " &middot; Fee " + peso(d.fee)];
+      if (d.number) { loadParts.push(escapeHtml(d.number)); }
+      if (typeof d.cash === "number") { loadParts.push("Cash " + peso(d.cash) + " &middot; Sukli " + peso(d.change)); }
+      html += '<div class="txn k-load">' +
+        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag load">LOAD</span></span>' +
+        '<span class="txn-total">' + peso(d.total) + "</span></div>" +
+        '<div class="txn-pay">' + loadParts.join(" &middot; ") + "</div></div>";
+
     } else if (event.kind === "payment") {
-      html += '<div class="txn k-utang">' + '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag utang">BAYAD SA UTANG</span></span>' + '<span class="txn-total">' + peso(d.amount) + "</span></div>" + '<div class="txn-pay">Galing kay ' + escapeHtml(d.name) + "</div></div>";
+      html += '<div class="txn k-utang">' +
+        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag utang">BAYAD SA UTANG</span></span>' +
+        '<span class="txn-total">' + peso(d.amount) + "</span></div>" +
+        '<div class="txn-pay">Galing kay ' + escapeHtml(d.name) + "</div></div>";
+
     } else if (event.kind === "own") {
       let lines = "";
       let costTotal = 0;
@@ -737,18 +981,34 @@ function txnHtml(events, showDay, emptyText) {
         const cost = itemCost(item);
         if (cost !== null) { costTotal += cost * item.qty; }
       });
-      const note = costTotal > 0 ? "Puhunan " + peso(round2(costTotal)) + " &middot; hindi kasama sa kita" : "Hindi kasama sa benta at kita";
-      html += '<div class="txn k-own">' + '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag own">PARA SAMEN</span></span><span class="txn-total"></span></div>' + '<ul class="txn-items">' + lines + "</ul>" + '<div class="txn-pay">' + note + "</div></div>";
+      const note = costTotal > 0
+        ? "Puhunan " + peso(round2(costTotal)) + " &middot; hindi kasama sa kita"
+        : "Hindi kasama sa benta at kita";
+      html += '<div class="txn k-own">' +
+        '<div class="txn-head"><span class="txn-time">' + when + '<span class="tag own">PARA SAMEN</span></span>' +
+        '<span class="txn-total"></span></div>' +
+        '<ul class="txn-items">' + lines + "</ul>" +
+        '<div class="txn-pay">' + note + "</div></div>";
+
     }
-    if (["sale", "payment", "own"].indexOf(event.kind) >= 0) {
+
+    // buttons under each entry: Resibo (sales only) and Burahin (undo)
+    if (["sale", "load", "payment", "own"].indexOf(event.kind) >= 0) {
       const block = html.slice(before);
       const attrs = ' data-kind="' + event.kind + '" data-order="' + event.order + '"';
-      const buttons = '<div class="txn-actions">' + (event.kind === "sale" ? '<button type="button" class="txn-btn" data-act="receipt"' + attrs + ">"+icon("receipt")+"Resibo</button>" : "") + '<button type="button" class="txn-btn undo" data-act="undo"' + attrs + ">"+icon("trash")+"Burahin</button></div>";
+      const buttons = '<div class="txn-actions">' +
+        (event.kind === "sale" ? '<button type="button" class="txn-btn" data-act="receipt"' + attrs + ">"+icon("receipt")+"Resibo</button>" : "") +
+        '<button type="button" class="txn-btn undo" data-act="undo"' + attrs + ">"+icon("trash")+"Burahin</button></div>";
       html = html.slice(0, before) + block.slice(0, -6) + buttons + "</div>";
     }
   });
-  return html || '<p class="empty">' + emptyText + "</p>";
+
+  if (html === "") {
+    html = '<p class="empty">' + emptyText + "</p>";
+  }
+  return html;
 }
+
 // The Today tab
 function renderToday() {
   const stats = todayStats();
@@ -756,8 +1016,11 @@ function renderToday() {
   document.getElementById("stat-count").textContent = stats.count;
   document.getElementById("stat-items").textContent = stats.items;
   // whole pesos are shown without ".00" so the small boxes stay readable
+  document.getElementById("stat-load").textContent = pesoShort(stats.loads);
+  document.getElementById("stat-load-profit").textContent = pesoShort(stats.loadProfit);
+  document.getElementById("stat-discount").textContent = pesoShort(stats.discounts);
   document.getElementById("stat-hint").textContent =
-    "Total = cash sales + bayad sa utang." +
+    "Total = cash sales + load + bayad sa utang." +
     (stats.utangCharged > 0 ? " Nasa utang ngayon (" + peso(stats.utangCharged) + ") ay wala pa sa total." : "");
 
   document.getElementById("stat-profit").textContent = peso(stats.profit);
@@ -811,7 +1074,9 @@ function renderWeek() {
   document.getElementById("wk-total").textContent = peso(stats.total);
   document.getElementById("wk-count").textContent = stats.count;
   document.getElementById("wk-items").textContent = stats.items;
-  document.getElementById("wk-profit").textContent = peso(stats.profit);  document.getElementById("wk-hint").textContent = (profitNotes(stats) + " " + ownNotes(stats)).trim();
+  document.getElementById("wk-profit").textContent = peso(stats.profit);
+  document.getElementById("wk-load").textContent = pesoShort(stats.loads);
+  document.getElementById("wk-hint").textContent = (profitNotes(stats) + " " + ownNotes(stats)).trim();
   document.getElementById("week-list").innerHTML = txnHtml(dayEvents(weekDate), true, "Walang transactions sa araw na ito.");
   renderWeekExtras(dates);
 }
@@ -856,6 +1121,8 @@ function showView(name) {
     renderUtang();
   }
   if (name === "products") {
+    renderBackupBanner();
+    fillPriceSettings();
   }
   window.scrollTo(0, 0);
 }
@@ -875,7 +1142,7 @@ function buildQuickCash() {
   // each button has the color of the real peso bill, so it can be found by color
   let html = '<button type="button" class="bill exact" data-cash="exact">Exact</button>';
   QUICK_CASH.forEach(function (amount) {
-    html += '<button type="button" class="bill ' + BILL_CLASS[amount] + '" data-cash="' + amount + '">\u20B1' + amount + "</button>";
+    html += '<button type="button" class="bill ' + BILL_CLASS[amount] + '" data-cash="' + amount + '">₱' + amount + "</button>";
   });
   document.getElementById("quick-cash").innerHTML = html;
 }
@@ -987,6 +1254,186 @@ document.getElementById("cart-list").addEventListener("click", function (event) 
 
 document.getElementById("search-input").addEventListener("input", renderTiles);
 
+// Best sellers / Kategorya switch
+function setViewMode(mode) {
+  settings.viewMode = mode;
+  saveData();
+  renderTiles();
+}
+byId("mode-best").addEventListener("click", function () { setViewMode("best"); });
+byId("mode-cat").addEventListener("click", function () { setViewMode("cat"); });
+
+// Open or close a category folder on the Benta page (one open at a time, like a playlist)
+byId("cat-list").addEventListener("click", function (event) {
+  const head = event.target.closest(".cat-head");
+  if (head) {
+    const key = head.getAttribute("data-cat");
+    openCatKey = openCatKey === key ? null : key;
+    renderTiles();
+    if (openCatKey !== null) {
+      const box = head.closest(".cat-group");
+      if (box && box.scrollIntoView) { box.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+    }
+    return;
+  }
+  const tile = event.target.closest(".tile");
+  if (tile) { addToCart(tile.getAttribute("data-barcode")); }
+});
+
+// Open or close a category folder in the Paninda tab. (Taps on a product row are handled with the Edit sheet.)
+byId("product-list").addEventListener("click", function (event) {
+  const head = event.target.closest(".cat-head");
+  if (head) {
+    const key = head.getAttribute("data-pcat");
+    openProdCats[key] = !openProdCats[key];
+    renderProducts();
+  }
+});
+
+
+/* ---------- 9b. BAWAS (DISCOUNT FOR SUKI) ---------- */
+let discMode = "peso";
+const DISC_QUICK = { peso: [1, 2, 5, 10, 20], pct: [5, 10, 15, 20] };
+
+function openDisc() {
+  if (cart.length === 0) { return; }
+  discMode = discount ? discount.mode : "peso";
+  byId("disc-input").value = discount ? discount.value : "";
+  renderDisc();
+  openSheet("disc-overlay");
+}
+
+function discInputValue() {
+  const n = parseFloat(byId("disc-input").value);
+  return n > 0 ? n : 0;
+}
+
+function renderDisc() {
+  byId("disc-mode-peso").classList.toggle("active", discMode === "peso");
+  byId("disc-mode-pct").classList.toggle("active", discMode === "pct");
+  byId("disc-unit").textContent = discMode === "pct" ? "%" : "\u20b1";
+  byId("disc-quick").innerHTML = DISC_QUICK[discMode].map(function (n) {
+    return '<button type="button" data-v="' + n + '">' + (discMode === "pct" ? n + "%" : "\u20b1" + n) + "</button>";
+  }).join("");
+  const sub = cartSubtotal();
+  const value = discInputValue();
+  const off = calcDiscount(sub, { mode: discMode, value: value });
+  byId("disc-sub").textContent = peso(sub);
+  byId("disc-off").textContent = off > 0 ? "\u2212" + peso(off) : peso(0);
+  byId("disc-new").textContent = peso(round2(sub - off));
+  byId("disc-apply").disabled = !(value > 0) || (discMode === "pct" && value > 100);
+}
+
+byId("disc-btn").addEventListener("click", openDisc);
+byId("disc-clear").addEventListener("click", function () { discount = null; renderAll(); });
+byId("disc-mode-peso").addEventListener("click", function () { discMode = "peso"; renderDisc(); });
+byId("disc-mode-pct").addEventListener("click", function () { discMode = "pct"; renderDisc(); });
+byId("disc-input").addEventListener("input", renderDisc);
+byId("disc-quick").addEventListener("click", function (event) {
+  const b = event.target.closest("button");
+  if (b) { byId("disc-input").value = b.getAttribute("data-v"); renderDisc(); }
+});
+byId("disc-cancel").addEventListener("click", function () { closeSheet("disc-overlay"); });
+byId("disc-apply").addEventListener("click", function () {
+  const value = discInputValue();
+  if (!(value > 0)) { return; }
+  discount = { mode: discMode, value: value };
+  closeSheet("disc-overlay");
+  renderAll();
+  showMessage("Bawas na " + peso(discountAmount()) + " para sa suki.", "ok");
+});
+
+
+/* ---------- 9c. HINTAYIN MUNA (HOLD A SALE) ---------- */
+function copyLines(items) {
+  return items.map(function (i) { return Object.assign({}, i); });
+}
+
+function holdTotal(h) {
+  let sub = 0;
+  h.items.forEach(function (i) { sub += lineTotal(i); });
+  return round2(sub - calcDiscount(round2(sub), h.discount));
+}
+
+function holdSale() {
+  if (cart.length === 0 || ownMode) { return; }
+  held.push({ id: Date.now(), ts: Date.now(), items: copyLines(cart), discount: discount ? Object.assign({}, discount) : null });
+  cart = [];
+  discount = null;
+  saveData();
+  renderAll();
+  showMessage("Naka-hold muna. Tap ang Hold sa itaas para ituloy.", "ok");
+}
+
+function resumeHeld(id) {
+  const at = held.findIndex(function (h) { return h.id === id; });
+  if (at < 0) { return; }
+  const h = held[at];
+
+  // stock and prices may have changed while it waited
+  const lines = [];
+  let changed = false;
+  h.items.forEach(function (item) {
+    const p = findProduct(item.barcode);
+    if (!p) { changed = true; return; }
+    const qty = Math.min(item.qty, p.stock);
+    if (qty < item.qty) { changed = true; }
+    if (qty > 0) {
+      lines.push(Object.assign({}, item, { qty: qty, name: p.name, price: p.price, bundle: p.bundle || null }));
+    }
+  });
+  if (lines.length === 0) {
+    held.splice(at, 1);
+    saveData();
+    renderAll();
+    alert("Wala nang stock ang mga paninda sa naka-hold na benta, kaya binura ito.");
+    return;
+  }
+
+  // if a sale is open now, it takes the place of the one we pick up (swap)
+  const current = cart.length > 0
+    ? { id: Date.now(), ts: Date.now(), items: copyLines(cart), discount: discount ? Object.assign({}, discount) : null }
+    : null;
+  held.splice(at, 1);
+  if (current) { held.splice(at, 0, current); }
+  cart = lines;
+  discount = h.discount ? Object.assign({}, h.discount) : null;
+  if (ownMode) { setOwnMode(false); }
+  saveData();
+  renderAll();
+  showMessage(changed ? "Itinuloy ang benta. May nabago sa stock o presyo, tingnan ang listahan." : "Itinuloy ang naka-hold na benta.", changed ? "error" : "ok");
+}
+
+function renderHeld() {
+  const box = byId("held-list");
+  box.hidden = held.length === 0;
+  box.innerHTML = held.map(function (h, i) {
+    let count = 0;
+    h.items.forEach(function (item) { count += item.qty; });
+    return '<div class="held-chip">' +
+      '<button type="button" class="held-resume" data-id="' + h.id + '">' + icon("play") +
+        '<span class="held-info"><span class="held-label">Hold ' + (i + 1) + "</span>" +
+        '<span class="held-sub">' + count + " item" + (count === 1 ? "" : "s") + " &middot; " + peso(holdTotal(h)) + "</span></span></button>" +
+      '<button type="button" class="held-del" data-id="' + h.id + '" aria-label="Burahin ang hold">' + icon("x") + "</button></div>";
+  }).join("");
+}
+
+byId("hold-btn").addEventListener("click", holdSale);
+byId("held-list").addEventListener("click", function (event) {
+  const del = event.target.closest(".held-del");
+  const resume = event.target.closest(".held-resume");
+  if (del) {
+    const id = Number(del.getAttribute("data-id"));
+    if (confirm("Burahin ang naka-hold na benta na ito?")) {
+      held = held.filter(function (h) { return h.id !== id; });
+      saveData();
+      renderAll();
+    }
+  } else if (resume) {
+    resumeHeld(Number(resume.getAttribute("data-id")));
+  }
+});
+
 
 /* ---------- 10. CAMERA SCANNER ----------
    iPhone Safari cannot read barcodes by itself, so we load a free helper library
@@ -1057,27 +1504,8 @@ function beep(good) {
 
 function setScannerStatus(text) {
   document.getElementById("scanner-status").textContent = text;
-  const box = document.getElementById("scanner-product");
-  if (box && !text) { box.hidden = true; box.innerHTML = ""; }
 }
 
-let scannedProducts = [];
-function showScannedProduct(product) {
-  const box = document.getElementById("scanner-product");
-  if (!box) { return; }
-  if (!product) {
-    scannedProducts = [];
-    box.hidden = true;
-    box.innerHTML = "";
-    return;
-  }
-  scannedProducts.unshift({ name: product.name, price: product.price });
-  scannedProducts = scannedProducts.slice(0, 3);
-  box.hidden = false;
-  box.innerHTML = scannedProducts.map(function (item) {
-    return '<div class="scanner-product-row"><strong>' + escapeHtml(item.name) + '</strong><span>' + peso(item.price) + '</span></div>';
-  }).join("");
-}
 // The barcode kinds found on store products
 const SCAN_FORMAT_NAMES = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"];
 
@@ -1092,12 +1520,34 @@ function scanFormats() {
   ];
 }
 
+// The big popup under the Done button: shows the name and price of what was just scanned,
+// and the camera keeps running. ok = false makes it red.
+function showScanCard(opts) {
+  const card = byId("scan-card");
+  card.hidden = false;
+  card.className = "scan-card " + (opts.ok ? "good" : "bad");
+  byId("scan-card-thumb").innerHTML = opts.product ? thumbHtml(opts.product, "big") : '<span class="scan-x">' + icon("warn") + "</span>";
+  byId("scan-card-name").textContent = opts.product ? opts.product.name : opts.text;
+  byId("scan-card-price").textContent = opts.price || "";
+  byId("scan-card-sub").textContent = opts.sub || (opts.product ? opts.text : "");
+  const qty = byId("scan-card-qty");
+  qty.hidden = !opts.qty;
+  qty.textContent = opts.qty ? "\u00d7" + opts.qty : "";
+  void card.offsetWidth;                       // restart the little pop animation
+  card.classList.add("pop");
+}
+
+function hideScanCard() {
+  byId("scan-card").hidden = true;
+  byId("scanner-close").textContent = "Done";
+}
+
 async function openScanner(mode) {
   scannerMode = mode;
   lastScanCode = "";
+  hideScanCard();
   unlockAudio();
   document.getElementById("scanner-overlay").hidden = false;
-  showScannedProduct(null);
   setScannerStatus("Binubuksan ang camera...");
 
   try {
@@ -1155,7 +1605,9 @@ async function startLive() {
     // ask for continuous auto-focus (ignored by phones that can't)
     try { scanner.applyVideoConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (e) {}
     setupZoom();
-    setScannerStatus(scannerMode === "sell" ? "Puwedeng mag-scan ng maraming paninda. Lalabas sa itaas ang huling 3 produkto at presyo. Pindutin ang Done kapag tapos na." : scannerMode === "receive" ? "Itutok sa mga barcode. Tuloy-tuloy ang scan hanggang pindutin ang Done." : "Itutok sa barcode.");
+    setScannerStatus(scannerMode === "sell" || scannerMode === "receive"
+      ? "Itutok sa barcode, mga 15-20 cm ang layo, nakahiga ang barcode. Tuloy-tuloy ang scan hanggang pindutin ang Done."
+      : "Itutok sa barcode.");
   } catch (error) {
     scanner = null;
     setScannerStatus("Hindi mabuksan ang camera. Payagan ang camera para sa page na ito (iPhone: Settings > Safari > Camera).");
@@ -1205,7 +1657,6 @@ async function stopLive() {
 async function closeScanner() {
   await stopLive();
   document.getElementById("scanner-overlay").hidden = true;
-  showScannedProduct(null);
 }
 
 // Called by the library each time it reads a barcode. force = skip the "same barcode again" check.
@@ -1230,15 +1681,29 @@ function onScanSuccess(code, force) {
   if (scannerMode === "receive") {
     const got = receiveAdd(code);
     beep(got.ok);
-    setScannerStatus(got.text);
+    setScannerStatus(got.ok ? "Handa sa susunod na scan." : got.text);
+    showScanCard({
+      ok: got.ok, product: got.product, text: got.text,
+      price: got.product ? "Stock: " + got.product.stock + " \u2192 " + (got.product.stock + got.qty) : "",
+      sub: got.ok ? "Dagdag na dumating: +1" : "", qty: got.ok ? got.qty : 0
+    });
     return;
   }
 
   const result = addToCart(code);
   beep(result.ok);
-  setScannerStatus(result.text);
-  const scannedProduct = findProduct(code);
-  if (result.ok && scannedProduct) { showScannedProduct(scannedProduct); }
+  setScannerStatus(result.ok ? "Handa sa susunod na scan." : result.text);
+  const summary = cartItemCount() + " item" + (cartItemCount() === 1 ? "" : "s") + " \u00b7 " + peso(cartTotal());
+  if (result.ok) {
+    const p = result.product;
+    showScanCard({
+      ok: true, product: p, text: "", price: peso(p.price) + (p.bundle ? "  (" + bundleText(p.bundle) + ")" : ""),
+      sub: "Sa cart: " + summary, qty: result.qty
+    });
+  } else {
+    showScanCard({ ok: false, product: result.product || null, text: result.text, price: "", sub: result.product ? result.text : "", qty: 0 });
+  }
+  byId("scanner-close").textContent = cartItemCount() > 0 ? "Done \u00b7 " + summary : "Done";
 }
 
 document.getElementById("camera-btn").addEventListener("click", function () { openScanner("sell"); });
@@ -1279,8 +1744,6 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
     stock: parseInt(document.getElementById("new-stock").value, 10),
     reorder: reorder
   };
-  const category = document.getElementById("new-category").value.trim();
-  if (category) newProduct.category = category;
   const cost = parseFloat(document.getElementById("new-cost").value);
   if (!isNaN(cost) && cost >= 0) {
     newProduct.cost = cost;               // puhunan: what we paid for it
@@ -1294,6 +1757,14 @@ document.getElementById("add-form").addEventListener("submit", function (event) 
   if (document.getElementById("new-front").checked) {
     newProduct.front = true;              // always on the front page
   }
+  const newCategory = categoryName({ category: byId("new-category").value });
+  if (newCategory) {
+    newProduct.category = newCategory;    // folder on the Benta and Paninda pages
+  }
+  if (lowMargin(newProduct) && !confirm(lowMarginText(newProduct))) {
+    return;                               // the user wants to fix the price first
+  }
+  newProduct.history = [{ ts: Date.now(), date: todayText(), start: true, newPrice: newProduct.price, newCost: typeof newProduct.cost === "number" ? newProduct.cost : null }];
   products.push(newProduct);
 
   saveData();
@@ -1316,7 +1787,7 @@ function showFrontState(id) {
   document.getElementById(id).addEventListener("change", function () { showFrontState(id); });
 });
 
-// The green "Kita \u20B13.00 bawat isa" line under the Puhunan and Presyo boxes
+// The green "Kita ₱3.00 bawat isa" line under the Puhunan and Presyo boxes
 function showProfitLine(costId, priceId, lineId) {
   const cost = parseFloat(document.getElementById(costId).value);
   const price = parseFloat(document.getElementById(priceId).value);
@@ -1330,9 +1801,56 @@ function showProfitLine(costId, priceId, lineId) {
   if (diff < 0) {
     line.classList.add("loss");
     line.textContent = "Lugi: " + peso(-diff) + " bawat isa";
+  } else if (diff < (settings.minKita || 0)) {
+    line.classList.add("warn");
+    line.textContent = "Kita: " + peso(diff) + " bawat isa. Mababa (dapat " + peso(settings.minKita) + " pataas).";
   } else {
     line.textContent = "Kita: " + peso(diff) + " bawat isa";
   }
+}
+
+// The question asked when a price leaves too little kita
+function lowMarginText(p) {
+  const kita = unitKita(p);
+  return (kita < 0 ? "LUGI ang " : "Mababa ang kita ng ") + p.name + ": " + peso(Math.abs(kita)) + " bawat piraso" +
+    (kita < 0 ? "." : " (dapat " + peso(settings.minKita) + " pataas).") + "\n\nTuloy pa rin ba?";
+}
+
+// Remember when a price or puhunan changes, so you can see it later in the Edit sheet
+function logPriceChange(p, newPrice, newCost, newBundle) {
+  const oldCost = typeof p.cost === "number" ? p.cost : null;
+  const nc = typeof newCost === "number" ? newCost : null;
+  const ob = p.bundle ? p.bundle.qty + "/" + p.bundle.price : "";
+  const nb = newBundle ? newBundle.qty + "/" + newBundle.price : "";
+  if (newPrice === p.price && nc === oldCost && ob === nb) { return; }
+  if (!Array.isArray(p.history)) { p.history = []; }
+  p.history.push({
+    ts: Date.now(), date: todayText(),
+    oldPrice: p.price, newPrice: newPrice, oldCost: oldCost, newCost: nc,
+    oldBundle: p.bundle || null, newBundle: newBundle || null
+  });
+  p.history = p.history.slice(-30);
+}
+
+function historyLine(h) {
+  const money = function (n) { return n === null || n === undefined ? "\u2013" : peso(n); };
+  if (h.start) {
+    return "Simula: presyo " + peso(h.newPrice) + (h.newCost !== null && h.newCost !== undefined ? ", puhunan " + peso(h.newCost) : "");
+  }
+  const parts = [];
+  if (h.oldPrice !== h.newPrice) { parts.push("Presyo " + money(h.oldPrice) + " \u2192 " + money(h.newPrice)); }
+  if (h.oldCost !== h.newCost) { parts.push("Puhunan " + money(h.oldCost) + " \u2192 " + money(h.newCost)); }
+  const bt = function (b) { return b ? bundleText(b) : "wala"; };
+  if (JSON.stringify(h.oldBundle || null) !== JSON.stringify(h.newBundle || null)) { parts.push("Bundle " + bt(h.oldBundle) + " \u2192 " + bt(h.newBundle)); }
+  return parts.join(" \u00b7 ");
+}
+
+function renderEditHistory(p) {
+  const list = (p.history || []).slice().reverse().slice(0, 10);
+  byId("edit-history-box").hidden = list.length === 0;
+  byId("edit-history").innerHTML = list.map(function (h) {
+    return '<div class="hist-row"><span class="hist-date">' + escapeHtml(dayLabel(h.date)) + "</span><span>" + escapeHtml(historyLine(h)) + "</span></div>";
+  }).join("");
 }
 ["new-cost", "new-price"].forEach(function (id) {
   document.getElementById(id).addEventListener("input", function () {
@@ -1360,7 +1878,6 @@ function openEdit(barcode) {
   editPhoto = product.photo || "";
   showPhotoField("edit", editPhoto, product.name);
   document.getElementById("edit-name").value = product.name;
-  document.getElementById("edit-category").value = product.category || "";
   document.getElementById("edit-barcode").value = product.barcode;
   document.getElementById("edit-price").value = product.price;
   document.getElementById("edit-cost").value = typeof product.cost === "number" ? product.cost : "";
@@ -1371,6 +1888,8 @@ function openEdit(barcode) {
   byId("edit-bundle-price").value = product.bundle ? product.bundle.price : "";
   document.getElementById("edit-front").checked = !!product.front;
   showFrontState("edit-front");
+  byId("edit-category").value = categoryName(product);
+  renderEditHistory(product);
   document.getElementById("edit-message").textContent = "";
   document.getElementById("edit-overlay").hidden = false;
 }
@@ -1411,15 +1930,25 @@ function saveEdit() {
     return;
   }
 
+  const newPriceValue = parseFloat(document.getElementById("edit-price").value);
+  const priceChanged = newPriceValue !== product.price || (costText === "" ? typeof product.cost === "number" : newCost !== product.cost) ||
+    JSON.stringify(bundleInfo.bundle || null) !== JSON.stringify(product.bundle || null);
+  const preview = { name: document.getElementById("edit-name").value.trim(), price: newPriceValue, bundle: bundleInfo.bundle };
+  if (costText !== "") { preview.cost = newCost; }
+  if (priceChanged && lowMargin(preview) && !confirm(lowMarginText(preview))) {
+    return;
+  }
+  logPriceChange(product, newPriceValue, costText === "" ? null : newCost, bundleInfo.bundle);
+
   const oldBarcode = product.barcode;
+  const newCategory = categoryName({ category: byId("edit-category").value });
+  if (newCategory) { product.category = newCategory; } else { delete product.category; }
   if (bundleInfo.bundle) {
     product.bundle = bundleInfo.bundle;
   } else {
     delete product.bundle;
   }
   product.name = document.getElementById("edit-name").value.trim();
-  const category = document.getElementById("edit-category").value.trim();
-  if (category) { product.category = category; } else { delete product.category; }
   product.barcode = newBarcode;
   product.price = parseFloat(document.getElementById("edit-price").value);
   if (costText === "") {
@@ -1453,6 +1982,16 @@ function saveEdit() {
     }
     cart = cart.filter(function (item) { return item.qty > 0; });
   }
+  held.forEach(function (h) {
+    h.items.forEach(function (item) {
+      if (item.barcode === oldBarcode) {
+        item.barcode = product.barcode;
+        item.name = product.name;
+        item.price = product.price;
+        item.bundle = product.bundle || null;
+      }
+    });
+  });
 
   saveData();
   renderAll();
@@ -1470,6 +2009,10 @@ function deleteProduct() {
   }
   products = products.filter(function (p) { return p !== product; });
   cart = cart.filter(function (item) { return item.barcode !== product.barcode; });
+  held.forEach(function (h) {
+    h.items = h.items.filter(function (item) { return item.barcode !== product.barcode; });
+  });
+  held = held.filter(function (h) { return h.items.length > 0; });
   saveData();
   renderAll();
   closeEdit();
@@ -1492,7 +2035,7 @@ document.getElementById("edit-scan-btn").addEventListener("click", function () {
 
 // Delete everything (the sample products too) and start with an empty list
 document.getElementById("empty-btn").addEventListener("click", function () {
-  if (confirm("Burahin LAHAT ng paninda at benta at magsimula sa walang laman?\n\nMananatili ang utang.\nMag-save muna ng backup kung kailangan.")) {
+  if (confirm("Burahin LAHAT ng paninda at benta at magsimula sa walang laman?\n\nMananatili ang utang at load.\nMag-save muna ng backup kung kailangan.")) {
     products = [];
     sales = [];
     ownUse = [];
@@ -1500,6 +2043,152 @@ document.getElementById("empty-btn").addEventListener("click", function () {
     saveData();
     renderAll();
   }
+});
+
+
+/* ---------- 11c. SMALL HELPERS ---------- */
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+// Round to centavos so numbers like 0.1 + 0.2 don't show up as 0.30000000000000004
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+// "+₱5.00" or "−₱5.00"
+function signedPeso(n) {
+  return (n >= 0 ? "+" : "\u2212") + peso(Math.abs(n));
+}
+
+
+/* ---------- 11c-2. LOAD (mobile load) ----------
+   The customer pays the load amount PLUS our fee. The fee is our kita.
+   10 -> fee 2 (pays 12), 20 -> 3 (23), 30 -> 3 (33), 40 -> 4 (44), 50 -> 5 (55), 100 and up -> 5. */
+
+const LOAD_FEES = [[10, 2], [20, 3], [30, 3], [40, 4], [50, 5]];     // amounts of 50 and up are all 5
+const LOAD_QUICK = [10, 20, 30, 40, 50, 100, 200, 300, 500, 1000];
+let loadFeeEdited = false;          // true after you type your own fee
+
+function loadFee(amount) {
+  if (!(amount > 0)) { return 0; }
+  let fee = 2;
+  LOAD_FEES.forEach(function (row) {
+    if (amount >= row[0]) { fee = row[1]; }
+  });
+  return fee;
+}
+
+function loadInput() {
+  const amount = round2(parseFloat(byId("load-amount").value));
+  const fee = round2(parseFloat(byId("load-fee").value));
+  return { amount: amount, fee: fee, ok: amount > 0 && fee >= 0, total: round2(amount + fee) };
+}
+
+function openLoad() {
+  byId("load-amount").value = "";
+  byId("load-fee").value = "";
+  byId("load-number").value = "";
+  byId("load-cash").value = "";
+  loadFeeEdited = false;
+  updateLoadSheet();
+  openSheet("load-overlay");
+}
+
+function updateLoadSheet() {
+  const amountBox = byId("load-amount");
+  const feeBox = byId("load-fee");
+  const amount = round2(parseFloat(amountBox.value));
+  if (!loadFeeEdited) {
+    feeBox.value = amount > 0 ? loadFee(amount) : "";
+  }
+  const input = loadInput();
+  byId("load-total").textContent = input.ok ? peso(input.total) : peso(0);
+  byId("load-sum").textContent = input.ok ? "Load " + peso(input.amount) + " + fee " + peso(input.fee) : "Pumili ng load";
+
+  // buttons: the chosen amount is highlighted
+  byId("load-quick").querySelectorAll("button").forEach(function (b) {
+    b.classList.toggle("picked", input.ok && Number(b.getAttribute("data-amount")) === input.amount);
+  });
+
+  const cash = parseFloat(byId("load-cash").value);
+  const label = byId("load-change-label");
+  const out = byId("load-change");
+  let canSave = input.ok;
+  if (!input.ok || isNaN(cash)) {
+    label.textContent = "Sukli";
+    out.textContent = peso(0);
+  } else if (cash < input.total) {
+    label.textContent = "Kulang pa";
+    out.textContent = peso(round2(input.total - cash));
+    canSave = false;
+  } else {
+    label.textContent = "Sukli";
+    out.textContent = peso(round2(cash - input.total));
+  }
+  byId("load-confirm").disabled = !canSave;
+}
+
+function completeLoad() {
+  const input = loadInput();
+  if (!input.ok) { return; }
+  const cash = parseFloat(byId("load-cash").value);
+  if (!isNaN(cash) && cash < input.total) { return; }
+  const entry = {
+    ts: Date.now(), date: todayText(), time: new Date().toLocaleTimeString(),
+    amount: input.amount, fee: input.fee, total: input.total
+  };
+  const number = byId("load-number").value.trim();
+  if (number) { entry.number = number; }
+  if (!isNaN(cash)) { entry.cash = cash; entry.change = round2(cash - input.total); }
+  loads.push(entry);
+  saveData();
+  closeSheet("load-overlay");
+  renderAll();
+  showMessage("Load " + peso(input.amount) + ": " + peso(input.total) + (entry.change > 0 ? ". Sukli " + peso(entry.change) : "") + ".", "ok");
+  if (entry.change > 0) { speakParts([["Natanggap", cash], ["Sukli", entry.change]]); }
+}
+
+function buildLoadQuick() {        // called when the page opens (BILL_CLASS is defined further down)
+  byId("load-quick").innerHTML = LOAD_QUICK.map(function (amount) {
+    return '<button type="button" class="bill ' + (BILL_CLASS[amount] || "bx") + '" data-amount="' + amount + '">₱' + amount + "</button>";
+  }).join("");
+}
+byId("load-quick").addEventListener("click", function (event) {
+  const button = event.target.closest("button");
+  if (!button) { return; }
+  byId("load-amount").value = button.getAttribute("data-amount");
+  loadFeeEdited = false;
+  updateLoadSheet();
+  const input = loadInput();
+  if (input.ok) { speakAmount("Singil", input.total); }
+});
+byId("load-amount").addEventListener("input", function () { loadFeeEdited = false; updateLoadSheet(); });
+byId("load-fee").addEventListener("input", function () { loadFeeEdited = true; updateLoadSheet(); });
+byId("load-cash").addEventListener("input", updateLoadSheet);
+byId("load-open").addEventListener("click", openLoad);
+byId("load-cancel").addEventListener("click", function () { closeSheet("load-overlay"); });
+byId("load-form").addEventListener("submit", function (event) {
+  event.preventDefault();
+  completeLoad();
+});
+byId("load-speak").addEventListener("click", function () {
+  const input = loadInput();
+  if (input.ok) { speakAmount("Singil", input.total, true); }
+});
+
+
+/* ---------- 11c-3. KITA AT PRESYO SETTINGS ---------- */
+function fillPriceSettings() {
+  byId("set-min-kita").value = settings.minKita;
+}
+byId("set-min-kita").addEventListener("change", function () {
+  const n = parseFloat(this.value);
+  settings.minKita = isNaN(n) || n < 0 ? 1 : n;
+  saveData();
+  fillPriceSettings();
+  renderProducts();
 });
 
 
@@ -1843,16 +2532,21 @@ setupPhotoField("new", function () { return byId("new-name").value; }, function 
 setupPhotoField("edit", function () { return byId("edit-name").value; }, function (data) { editPhoto = data; });
 showPhotoField("new", "", "");
 
+
 /* ---------- 12. BACKUP AND RESTORE ----------
    A backup is a text file (.json) holding your products and sales. */
 
 function makeBackup() {
   return {
     app: "sari-sari-pos",
-    version: 2,
+    version: 3,
     savedAt: new Date().toISOString(),
     products: products,
     sales: sales,
+    loads: loads,
+    held: held,
+    ewallet: ewallet,        // old GCash/Maya data (kept so nothing is lost)
+    ewalletTx: ewalletTx,
     ledger: ledger,
     ownUse: ownUse,
     settings: settings
@@ -1878,11 +2572,23 @@ function checkBackup(data) {
     return "Some products in the backup file are damaged.";
   }
   // These three only exist in newer backups, so they are optional.
+  if (data.ewalletTx !== undefined && !Array.isArray(data.ewalletTx)) {
+    return "The old GCash/Maya records in the backup file are damaged.";
+  }
+  if (data.loads !== undefined && !Array.isArray(data.loads)) {
+    return "The load records in the backup file are damaged.";
+  }
+  if (data.held !== undefined && !Array.isArray(data.held)) {
+    return "The on-hold sales in the backup file are damaged.";
+  }
   if (data.ledger !== undefined && !Array.isArray(data.ledger)) {
     return "The utang records in the backup file are damaged.";
   }
   if (data.ownUse !== undefined && !Array.isArray(data.ownUse)) {
     return "The Para samen records in the backup file are damaged.";
+  }
+  if (data.ewallet !== undefined && (typeof data.ewallet !== "object" || data.ewallet === null)) {
+    return "The old GCash/Maya settings in the backup file are damaged.";
   }
   return "";
 }
@@ -1894,7 +2600,48 @@ function showBackupStatus() {
   box.textContent = last
     ? "Last backup saved: " + new Date(last).toLocaleString()
     : "You haven't saved a backup yet.";
+  renderBackupBanner();
 }
+
+/* ----- Backup reminder: a banner on the Benta page when the last backup is old ----- */
+const BACKUP_DAYS = 3;                         // remind after this many days
+
+function backupAgeDays() {
+  let last = "";
+  try { last = localStorage.getItem(LAST_BACKUP_KEY) || ""; } catch (error) {}
+  const t = last ? new Date(last).getTime() : NaN;
+  return isNaN(t) ? null : Math.max(0, Math.floor((Date.now() - t) / 86400000));
+}
+
+function hasRecords() {
+  return sales.length + loads.length + ledger.length + ownUse.length > 0;
+}
+
+function renderBackupBanner() {
+  const box = byId("backup-banner");
+  if (!box) { return; }
+  const age = backupAgeDays();
+  let text = "";
+  let urgent = false;
+  if (age === null && hasRecords()) {
+    text = "Wala ka pang backup. Mawawala ang records kapag nawala ang phone.";
+    urgent = true;
+  } else if (age !== null && age >= BACKUP_DAYS) {
+    text = "Huling backup: " + age + " araw na. I-save ulit para ligtas.";
+    urgent = age >= 7;
+  }
+  if (text && settings.backupSnooze === todayText()) { text = ""; }
+  box.hidden = text === "";
+  box.className = "backup-banner" + (urgent ? " urgent" : "");
+  byId("backup-text").textContent = text;
+}
+
+byId("backup-now").addEventListener("click", function () { saveBackup(); });
+byId("backup-later").addEventListener("click", function () {
+  settings.backupSnooze = todayText();
+  saveData();
+  renderBackupBanner();
+});
 
 function markBackupDone() {
   try { localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString()); } catch (error) {}
@@ -1934,38 +2681,81 @@ async function saveBackup() {
 
 function restoreBackup(text) {
   let data;
-  try { data = JSON.parse(text); }
-  catch (error) { alert("That file couldn't be read. Is it a backup file from this POS?"); return; }
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    alert("That file couldn't be read. Is it a backup file from this POS?");
+    return;
+  }
+
   const problem = checkBackup(data);
-  if (problem) { alert(problem); return; }
-  const question = "Restore this backup?\n\n" + data.products.length + " products and " + data.sales.length + " sales" +
+  if (problem) {
+    alert(problem);
+    return;
+  }
+
+  const question = "Restore this backup?\n\n" +
+    data.products.length + " products and " + data.sales.length + " sales" +
     (data.savedAt ? " (saved " + new Date(data.savedAt).toLocaleString() + ")" : "") +
     ".\n\nThis REPLACES the data currently on this page.";
-  if (!confirm(question)) { return; }
+  if (!confirm(question)) {
+    return;
+  }
+
   products = data.products;
   sales = data.sales;
+  // An older backup has no load or utang data: keep what is on this page instead of wiping it.
+  if (data.ewallet !== undefined) { ewallet = data.ewallet; }
+  if (data.ewalletTx !== undefined) { ewalletTx = data.ewalletTx; }
+  if (data.loads !== undefined) { loads = data.loads; }
+  held = Array.isArray(data.held) ? data.held : [];
+  discount = null;
   if (data.ledger !== undefined) { ledger = data.ledger; }
   if (data.ownUse !== undefined) { ownUse = data.ownUse; }
-  if (data.settings && typeof data.settings === "object") { settings = Object.assign({}, DEFAULT_SETTINGS, data.settings); }
+  if (data.settings && typeof data.settings === "object") {
+    settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
+  }
   cart = [];
-  lastSale = null;
   setOwnMode(false);
   renderSwitches();
   saveData();
   renderAll();
+  fillPriceSettings();
+  markBackupDone();
   showMessage("Backup restored.", "ok");
 }
 
 document.getElementById("backup-btn").addEventListener("click", saveBackup);
-document.getElementById("restore-btn").addEventListener("click", function () { document.getElementById("restore-file").click(); });
+
+document.getElementById("restore-btn").addEventListener("click", function () {
+  document.getElementById("restore-file").click();
+});
+
 document.getElementById("restore-file").addEventListener("change", function () {
   const file = this.files[0];
   if (!file) { return; }
   const reader = new FileReader();
-  reader.onload = function () { restoreBackup(reader.result); };
+  reader.onload = function () {
+    restoreBackup(reader.result);
+  };
   reader.readAsText(file);
-  this.value = "";
+  this.value = "";   // so choosing the same file again still works
 });
+
+// Reset everything back to the sample data (asks first)
+document.getElementById("reset-btn").addEventListener("click", function () {
+  if (confirm("Burahin lahat ng paninda at benta at bumalik sa sample data?\n\nMananatili ang utang at load.")) {
+    products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));   // a fresh copy of the samples
+    sales = [];
+    ownUse = [];
+    cart = [];
+    saveData();
+    renderAll();
+  }
+});
+
+
+
 /* ---------- 10b. BURAHIN (UNDO), RESIBO (RECEIPT) AND BOSES (VOICE) ---------- */
 
 // ----- Burahin: take back a wrong entry -----
@@ -1999,6 +2789,14 @@ function undoEntry(kind, order) {
     });
     ownUse.splice(order, 1);
     showMessage("Nabura ang Para samen. Bumalik ang stock.", "ok");
+
+  } else if (kind === "load") {
+    const entry = loads[order];
+    if (!entry) { return; }
+    if (!confirm("Burahin ang load na " + peso(entry.amount) + " (singil " + peso(entry.total) + ")?")) { return; }
+    loads.splice(order, 1);
+    showMessage("Nabura ang load.", "ok");
+
   } else if (kind === "payment") {
     const entry = ledger[order];
     if (!entry || entry.type !== "payment") { return; }
@@ -2038,6 +2836,10 @@ function receiptLines(sale) {
     lines.push("     " + (item.bundle && item.qty >= item.bundle.qty ? bundleText(item.bundle) : peso(item.price)) + " = " + peso(lineTotal(item)));
   });
   lines.push("--------------------------------");
+  if (sale.discount > 0) {
+    lines.push("Presyo: " + peso(round2(sale.total + sale.discount)));
+    lines.push("Bawas (suki): -" + peso(sale.discount));
+  }
   lines.push("TOTAL: " + peso(sale.total));
   if (sale.utang) {
     lines.push("UTANG: " + sale.utang.name);
@@ -2187,7 +2989,7 @@ function filipinoVoice() {
 }
 
 // parts = a list like [["Natanggap", 500], ["Sukli", 350]]. Uses a Filipino voice if the phone has one, otherwise English.
-const ENGLISH_LABELS = { "Total": "Total", "Natanggap": "Received", "Sukli": "Change", "Kulang pa": "Short by", "Singil": "Collect", "Ibigay": "Give" };
+const ENGLISH_LABELS = { "Total": "Total", "Natanggap": "Received", "Sukli": "Change", "Kulang pa": "Short by", "Singil": "Collect", "Ibigay": "Give", "Fee": "Fee", "Cash in": "Cash in", "Cash out": "Cash out" };
 
 function speakParts(parts, force) {
   if ((settings.voice === false && !force) || !("speechSynthesis" in window)) { return; }
@@ -2225,7 +3027,7 @@ function speakPayState() {
 }
 
 document.getElementById("pay-speak").addEventListener("click", function () { speakPayState(); });
-// Tapping a bill (\u20B1100, \u20B1500...) says the received cash and the sukli right away
+// Tapping a bill (₱100, ₱500...) says the received cash and the sukli right away
 document.getElementById("quick-cash").addEventListener("click", function (event) {
   if (event.target.closest("button")) { speakPayState(); }
 });
@@ -2339,7 +3141,7 @@ function receiveAdd(code) {
   const text = product.name + " +1 (" + line.qty + ")";
   setReceiveMessage(text, "ok");
   renderReceive();
-  return { ok: true, text: text };
+  return { ok: true, text: text, product: product, qty: line.qty };
 }
 
 function setReceiveMessage(text, type) {
@@ -2521,7 +3323,7 @@ byId("shop-share").addEventListener("click", function () {
 
 /* ----- CSV: import and export ----- */
 let csvRows = [];                              // rows that passed the check
-const CSV_COLUMNS = ["barcode", "name", "price", "cost", "stock", "reorder", "bundle_qty", "bundle_price"];
+const CSV_COLUMNS = ["barcode", "name", "price", "cost", "stock", "reorder", "bundle_qty", "bundle_price", "category"];
 
 function csvCell(value) {
   const text = value === undefined || value === null ? "" : String(value);
@@ -2533,15 +3335,15 @@ function productsToCsv() {
   products.forEach(function (p) {
     lines.push([
       p.barcode, p.name, p.price, typeof p.cost === "number" ? p.cost : "", p.stock, p.reorder,
-      p.bundle ? p.bundle.qty : "", p.bundle ? p.bundle.price : ""
+      p.bundle ? p.bundle.qty : "", p.bundle ? p.bundle.price : "", categoryName(p)
     ].map(csvCell).join(","));
   });
-  return "ï»¿" + lines.join("\r\n") + "\r\n";      // the first character helps Excel read the letters right
+  return "﻿" + lines.join("\r\n") + "\r\n";      // the first character helps Excel read the letters right
 }
 
 // Reads CSV text into rows of cells. Understands quotes, commas, semicolons and tabs.
 function parseCsv(text) {
-  text = text.replace(/^ï»¿/, "");
+  text = text.replace(/^﻿/, "");
   const firstLine = text.split(/\r?\n/)[0] || "";
   const counts = { ",": 0, ";": 0, "\t": 0 };
   Object.keys(counts).forEach(function (d) { counts[d] = firstLine.split(d).length - 1; });
@@ -2584,12 +3386,13 @@ function csvColumnMap(header) {
     stock: ["stock", "qty", "quantity", "dami"],
     reorder: ["reorder", "restock", "low"],
     bundleQty: ["bundleqty", "bundlequantity", "bundleilan"],
-    bundlePrice: ["bundleprice", "bundlepresyo"]
+    bundlePrice: ["bundleprice", "bundlepresyo"],
+    category: ["category", "kategorya", "uri", "group"]
   };
   header.forEach(function (raw, index) {
     const h = raw.toLowerCase().replace(/[^a-z]/g, "");
     // check bundle and reorder first so "bundle_price" is not taken as "price"
-    ["bundleQty", "bundlePrice", "reorder", "barcode", "name", "price", "cost", "stock"].forEach(function (key) {
+    ["bundleQty", "bundlePrice", "category", "reorder", "barcode", "name", "price", "cost", "stock"].forEach(function (key) {
       if (map[key] === undefined && wanted[key].some(function (w) { return h === w || h.indexOf(w) === 0 || (key !== "price" && key !== "stock" && h.indexOf(w) >= 0); })) {
         if (key === "price" && h.indexOf("bundle") >= 0) { return; }
         if (key === "stock" && h.indexOf("re") === 0) { return; }
@@ -2601,7 +3404,7 @@ function csvColumnMap(header) {
 }
 
 function csvNumber(text) {
-  const cleaned = String(text || "").replace(/[\u20B1,\s]/g, "").replace(/^php/i, "");
+  const cleaned = String(text || "").replace(/[₱,\s]/g, "").replace(/^php/i, "");
   if (cleaned === "") { return null; }
   const n = Number(cleaned);
   return isNaN(n) ? NaN : n;
@@ -2632,6 +3435,7 @@ function checkCsv(text) {
     const reorder = csvNumber(get("reorder"));
     const bq = csvNumber(get("bundleQty"));
     const bp = csvNumber(get("bundlePrice"));
+    const category = categoryName({ category: get("category") });
 
     function fail(reason) { result.errors.push("Linya " + line + ": " + reason); }
     if (/^\d+(\.\d+)?e\+?\d+$/i.test(barcode)) { return fail("sira ang barcode (" + barcode + "). Gawing Text ang column sa Excel."); }
@@ -2647,7 +3451,7 @@ function checkCsv(text) {
     if (seen[key]) { return fail("paulit-ulit ang barcode sa file."); }
     seen[key] = true;
 
-    const row = { barcode: barcode, name: name, price: price, cost: cost, stock: stock === null ? null : Math.round(stock), reorder: reorder === null ? null : Math.round(reorder), bundle: bq === null ? null : { qty: Math.round(bq), price: bp } };
+    const row = { barcode: barcode, name: name, price: price, cost: cost, stock: stock === null ? null : Math.round(stock), reorder: reorder === null ? null : Math.round(reorder), bundle: bq === null ? null : { qty: Math.round(bq), price: bp }, category: category };
     if (findProduct(barcode)) { result.updates.push(row); } else { result.news.push(row); }
   });
   return result;
@@ -2665,7 +3469,7 @@ byId("csv-export").addEventListener("click", function () {
   saveTextFile("paninda-" + todayText() + ".csv", productsToCsv(), "text/csv");
 });
 byId("csv-template").addEventListener("click", function () {
-  saveTextFile("paninda-template.csv", "ï»¿" + CSV_COLUMNS.join(",") + "\r\n", "text/csv");
+  saveTextFile("paninda-template.csv", "﻿" + CSV_COLUMNS.join(",") + "\r\n", "text/csv");
 });
 byId("csv-pick").addEventListener("click", function () { byId("csv-file").click(); });
 byId("csv-file").addEventListener("change", function () {
@@ -2699,15 +3503,18 @@ byId("csv-import").addEventListener("click", function () {
     const p = { barcode: r.barcode, name: r.name, price: r.price, stock: r.stock === null ? 0 : r.stock, reorder: r.reorder === null ? 5 : r.reorder };
     if (r.cost !== null) { p.cost = r.cost; }
     if (r.bundle) { p.bundle = r.bundle; }
+    if (r.category) { p.category = r.category; }
     products.push(p);
   });
   csvRows.updates.forEach(function (r) {
     const p = findProduct(r.barcode);
     p.name = r.name;
+    logPriceChange(p, r.price, r.cost !== null ? r.cost : (typeof p.cost === "number" ? p.cost : null), r.bundle || p.bundle || null);
     p.price = r.price;
     if (r.cost !== null) { p.cost = r.cost; }
     if (r.reorder !== null) { p.reorder = r.reorder; }
     if (r.bundle) { p.bundle = r.bundle; }
+    if (r.category) { p.category = r.category; }
     if (overwriteStock && r.stock !== null) { p.stock = r.stock; }
   });
   saveData();
@@ -2721,19 +3528,22 @@ byId("csv-import").addEventListener("click", function () {
 
 /* ----- Sara na ang tindahan: count the drawer ----- */
 function closingNumbers() {
-  const nums = { cashSales: 0, payments: 0 };
+  const nums = { cashSales: 0, payments: 0, loads: 0 };
   dayEvents(todayText()).forEach(function (event) {
     const d = event.data;
     if (event.kind === "sale" && !d.utang) {
       nums.cashSales += d.total;
     } else if (event.kind === "payment") {
       nums.payments += d.amount;
+    } else if (event.kind === "load") {
+      nums.loads += d.total;
     }
   });
   Object.keys(nums).forEach(function (k) { nums[k] = round2(nums[k]); });
-  nums.expected = round2(nums.cashSales + nums.payments);
+  nums.expected = round2(nums.cashSales + nums.payments + nums.loads);
   return nums;
 }
+
 function lastClosing() {
   const list = settings.closings || [];
   return list.length ? list[list.length - 1] : null;
@@ -2765,6 +3575,7 @@ function renderClose() {
     ["Panimulang cash", closeStart()],
     ["+ Benta (cash)", n.cashSales],
     ["+ Bayad sa utang", n.payments],
+    ["+ Load (cash)", n.loads]
   ];
   byId("close-rows").innerHTML = rows.map(function (r) {
     return '<div class="sum-row"><span>' + r[0] + "</span><strong>" + peso(r[1]) + "</strong></div>";
@@ -2780,7 +3591,6 @@ function renderClose() {
     diffBox.className = "change-row diff-" + w.cls;
     diffBox.innerHTML = "<span>Kulang / Sobra</span><strong>" + w.text + "</strong>";
   }
-
 
   const history = (settings.closings || []).slice(-7).reverse();
   byId("close-history").innerHTML = history.length ? history.map(function (c) {
@@ -2817,6 +3627,11 @@ byId("close-save").addEventListener("click", function () {
   const w = diffWords(round2(counted - expected));
   alert("Na-save ang closing: " + w.text + ". Bukas, " + peso(counted) + " ang magiging panimulang cash.");
   closeSheet("close-overlay");
+  // closing time is a good moment to save a backup
+  const age = backupAgeDays();
+  if ((age === null || age >= 1) && confirm("I-save na rin ang backup ngayon?")) {
+    saveBackup();
+  }
 });
 
 
@@ -2907,6 +3722,8 @@ byId("debt-remind").addEventListener("click", function () {
 
 drawIcons();
 buildQuickCash();
+buildLoadQuick();
+fillPriceSettings();
 renderSwitches();
 renderAll();
 showBackupStatus();
@@ -2942,9 +3759,3 @@ if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
 }
 
 document.getElementById("app-version").textContent = APP_VERSION;
-
-
-
-
-
-
