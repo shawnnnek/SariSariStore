@@ -31,7 +31,7 @@ const SETTINGS_KEY = "pos_settings";      // on/off switches
 const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "", closings: [],
   viewMode: "best", minKita: 1, backupSnooze: "", categories: [] };
 const BEST_COUNT = 10;
-const APP_VERSION = "v17 - Nov 16";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v19 - Nov 16";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // ----- Icons: simple line icons (instead of emojis). icon("trash") gives the picture as HTML. -----
 const ICONS = {
@@ -1156,11 +1156,12 @@ document.querySelectorAll(".tab").forEach(function (button) {
 
 /* ---------- 8. PAYMENT SHEET ---------- */
 
-const QUICK_CASH = [20, 50, 100, 200, 500, 1000];
+const QUICK_CASH = [1, 5, 10, 20, 50, 100, 200, 500, 1000];
 
 function buildQuickCash() {
   // each button has the color of the real peso bill, so it can be found by color
-  let html = '<button type="button" class="bill exact" data-cash="exact">Exact</button>';
+  let html = '<button type="button" class="bill exact" data-cash="exact">Exact</button>' +
+    '<button type="button" class="bill clear" data-cash="clear">Clear</button>';
   QUICK_CASH.forEach(function (amount) {
     html += '<button type="button" class="bill ' + BILL_CLASS[amount] + '" data-cash="' + amount + '">₱' + amount + "</button>";
   });
@@ -1230,13 +1231,24 @@ document.getElementById("quick-cash").addEventListener("click", function (event)
   const button = event.target.closest("button");
   if (!button) { return; }
   const value = button.getAttribute("data-cash");
-  const cash = value === "exact" ? cartTotal() : parseFloat(value);
-  document.getElementById("cash-input").value = cash;
+  const box = document.getElementById("cash-input");
+  if (value === "exact") {
+    box.value = cartTotal();                       // exactly the total
+  } else if (value === "clear") {
+    box.value = "";                                // start over
+  } else {
+    // bills and coins add up: tap 1000 twice = 2000
+    const now = parseFloat(box.value);
+    box.value = round2((isNaN(now) ? 0 : now) + parseFloat(value));
+  }
   updateChange();
 });
 
 document.getElementById("pay-confirm").addEventListener("click", function () {
-  const cash = parseFloat(document.getElementById("cash-input").value);
+  let cash = parseFloat(document.getElementById("cash-input").value);
+  if (isNaN(cash)) {
+    cash = cartTotal();                            // nothing typed: assume they paid the exact amount
+  }
   chargeSale(cash);
   closePay();
 });
@@ -2577,7 +2589,7 @@ function avatarHtml(name) {
 }
 
 // Money buttons use the color of the real peso bills
-const BILL_CLASS = { 20: "b20", 50: "b50", 100: "b100", 200: "b200", 500: "b500", 1000: "b1000" };
+const BILL_CLASS = { 1: "b1", 5: "b5", 10: "b10", 20: "b20", 50: "b50", 100: "b100", 200: "b200", 500: "b500", 1000: "b1000" };
 
 // ----- Photo of the product (Add product and Edit product) -----
 let newPhoto = "";
@@ -3711,6 +3723,48 @@ function renderClose() {
       '<div class="txn-pay">Nabilang ' + peso(c.counted) + " &middot; dapat " + peso(c.expected) + "</div></div>";
   }).join("") : '<p class="empty">Wala pang closing.</p>';
 }
+
+/* The daily summary: a short message you can send to yourself or mom */
+function dailySummaryText() {
+  const stats = todayStats();
+  const store = (settings.storeName || "").trim() || "Sari-Sari Store";
+  const lines = ["Buod ng araw - " + store, dayLabelLong(todayText()), ""];
+  lines.push("Benta: " + peso(stats.total) + " (" + stats.count + " transaction" + (stats.count === 1 ? "" : "s") + ")");
+  lines.push("Kita: " + peso(stats.profit));
+  if (stats.loads > 0) { lines.push("Load: " + peso(stats.loads) + " (kita " + peso(stats.loadProfit) + ")"); }
+  if (stats.discounts > 0) { lines.push("Bawas sa suki: " + peso(stats.discounts)); }
+  if (stats.utangCharged > 0) { lines.push("Nailagay sa utang ngayon: " + peso(stats.utangCharged)); }
+
+  // the drawer: use the number typed now, or the closing saved today
+  const n = closingNumbers();
+  let counted = parseFloat(byId("close-counted").value);
+  let expected = round2(closeStart() + n.expected);
+  if (isNaN(counted)) {
+    const saved = (settings.closings || []).filter(function (c) { return c.date === todayText(); })[0];
+    if (saved) { counted = saved.counted; expected = saved.expected; }
+  }
+  if (!isNaN(counted)) {
+    lines.push("");
+    lines.push("Drawer: dapat " + peso(expected) + ", nabilang " + peso(counted));
+    lines.push(diffWords(round2(counted - expected)).text);
+  }
+
+  // total utang and what is running low
+  const owing = debtBook().filter(function (p) { return p.balance > 0; });
+  let owed = 0;
+  owing.forEach(function (p) { owed += p.balance; });
+  if (owing.length > 0) {
+    lines.push("");
+    lines.push("Kabuuang utang: " + peso(round2(owed)) + " (" + owing.length + (owing.length === 1 ? " tao" : " katao") + ")");
+  }
+  const low = products.filter(function (p) { return p.stock <= p.reorder; });
+  if (low.length > 0) {
+    lines.push((owing.length > 0 ? "" : "\n") + "Malapit nang maubos (" + low.length + "): " +
+      low.slice(0, 6).map(function (p) { return p.name; }).join(", ") + (low.length > 6 ? ", at " + (low.length - 6) + " pa" : ""));
+  }
+  return lines.join("\n");
+}
+byId("close-share").addEventListener("click", function () { shareText(dailySummaryText()); });
 
 byId("close-btn").addEventListener("click", openClose);
 ["close-start", "close-counted"].forEach(function (id) {

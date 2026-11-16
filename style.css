@@ -473,6 +473,12 @@ i[data-icon] { display: inline-flex; font-style: normal; }
 .quick-cash { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .quick-cash button { flex: 1 0 28%; min-height: 48px; padding: 0 8px; font-size: 17px; background: #fff; color: var(--ink); border: 1px solid #8f8f8f; }
 .quick-cash button.bill { color: #fff; border-color: transparent; min-height: 54px; font-size: 20px; font-weight: 800; }
+.quick-cash button.b1,
+.quick-cash button.b5,
+.quick-cash button.b10  { background: #8a8f98; }
+.quick-cash button.b5   { background: #b8860b; }
+.quick-cash button.b10  { background: #5f6b7a; }
+.quick-cash button.clear { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
 .quick-cash button.b20   { background: #d9791a; }
 .quick-cash button.b50   { background: #d23a50; }
 .quick-cash button.b100  { background: #6f45c4; }
