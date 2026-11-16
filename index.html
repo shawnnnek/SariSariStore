@@ -6,7 +6,7 @@
   <title>My Sari-Sari POS</title>
 
   <!-- These lines let the page be added to the iPhone Home Screen like a real app -->
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#1f2933">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Sari POS">
@@ -74,7 +74,7 @@
       <p id="subtotal-note" class="hint" hidden></p>
 
       <!-- ON = the items in the list are taken for ourselves: stock goes down, but no sale and no profit -->
-      <label class="switch-row own-row" for="own-toggle" style="margin-top:12px">
+      <label class="switch-row own-row" for="own-toggle">
         <span class="switch-text">
           <span class="switch-title">Para samen</span>
           <span class="switch-note">Kukunin namin. Mababawas sa stock, wala sa benta at kita.</span>
@@ -218,6 +218,10 @@
       <p id="low-margin-hint" class="hint warn-text"></p>
       <div id="product-list" class="product-list"></div>
 
+      <h2>Mga kategorya</h2>
+      <div id="cat-manage" class="cat-manage"></div>
+      <button type="button" id="cat-add-btn" class="secondary wide"><i data-icon="plus"></i>Magdagdag ng kategorya</button>
+
       <h2>Magdagdag ng paninda</h2>
       <form id="add-form" class="add-form">
         <label for="new-barcode">Barcode</label>
@@ -314,7 +318,7 @@
           <option value="1.25">Mabilis</option>
           <option value="1.5">Pinakamabilis</option>
         </select>
-        <button type="button" id="voice-test" class="secondary wide">▶ Subukan ang boses</button>
+        <button type="button" id="voice-test" class="secondary wide"><i data-icon="play"></i>Subukan ang boses</button>
         <p id="voice-info" class="hint"></p>
       </div>
 
@@ -385,6 +389,22 @@
       </div>
       <button type="button" id="pay-utang" class="utang-btn">Ilagay sa utang</button>
     </div>
+  </div>
+
+  <!-- ============ KATEGORYA SHEET (add / edit / delete) ============ -->
+  <div id="cat-overlay" class="overlay" hidden>
+    <form id="cat-form" class="sheet">
+      <h2 id="cat-sheet-title">Bagong kategorya</h2>
+      <label for="cat-name">Pangalan ng kategorya</label>
+      <input type="text" id="cat-name" list="category-options" autocomplete="off" placeholder="hal. Canned goods" required>
+      <p id="cat-note" class="hint"></p>
+      <p id="cat-message" class="hint error-text"></p>
+      <div class="button-row">
+        <button type="button" id="cat-cancel" class="secondary">Cancel</button>
+        <button type="submit" class="primary"><i data-icon="check"></i>Save</button>
+      </div>
+      <button type="button" id="cat-delete" class="link-btn" hidden><i data-icon="trash"></i>Burahin ang kategorya</button>
+    </form>
   </div>
 
   <!-- ============ BAWAS (DISCOUNT) SHEET ============ -->

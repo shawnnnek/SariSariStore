@@ -29,9 +29,9 @@ const SETTINGS_KEY = "pos_settings";      // on/off switches
 
 // On/off switches. bestOnly = the Sell page shows only the 10 best sellers.
 const DEFAULT_SETTINGS = { bestOnly: true, voice: true, voiceRate: 1.25, storeName: "", closings: [],
-  viewMode: "best", minKita: 1, backupSnooze: "" };
+  viewMode: "best", minKita: 1, backupSnooze: "", categories: [] };
 const BEST_COUNT = 10;
-const APP_VERSION = "v15 - Nov 15";   // shown in the Paninda tab, so you can check which version a phone is running
+const APP_VERSION = "v17 - Nov 16";   // shown in the Paninda tab, so you can check which version a phone is running
 
 // ----- Icons: simple line icons (instead of emojis). icon("trash") gives the picture as HTML. -----
 const ICONS = {
@@ -494,8 +494,27 @@ function categoryColor(name) {
 }
 
 // [{ key, name, items }] named categories A-Z, then the products with no category.
-function groupByCategory(list) {
+// Categories you added yourself (they can be empty, with no paninda yet)
+function savedCategories() {
+  return Array.isArray(settings.categories) ? settings.categories : [];
+}
+
+// Every category name: the ones you added + the ones used by products
+function allCategoryNames() {
+  const seen = {};
+  const names = [];
+  savedCategories().concat(products.map(categoryName)).forEach(function (n) {
+    n = String(n || "").trim().replace(/\s+/g, " ");
+    if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = true; names.push(n); }
+  });
+  return names.sort(function (a, b) { return a.localeCompare(b); });
+}
+
+function groupByCategory(list, includeEmpty) {
   const map = {};
+  if (includeEmpty) {
+    allCategoryNames().forEach(function (n) { map[n.toLowerCase()] = { key: n.toLowerCase(), name: n, items: [] }; });
+  }
   list.forEach(function (p) {
     const name = categoryName(p);
     const key = name.toLowerCase();
@@ -518,7 +537,7 @@ function groupByCategory(list) {
 function renderCategoryOptions() {
   const seen = {};
   const names = [];
-  products.map(categoryName).concat(CATEGORY_SUGGESTIONS).forEach(function (n) {
+  allCategoryNames().concat(CATEGORY_SUGGESTIONS).forEach(function (n) {
     if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = true; names.push(n); }
   });
   byId("category-options").innerHTML = names.map(function (n) { return '<option value="' + escapeHtml(n) + '">'; }).join("");
@@ -570,7 +589,7 @@ function renderTiles() {
   if (byCategory && query === "") {
     grid.hidden = true;
     catBox.hidden = false;
-    const groups = groupByCategory(list);
+    const groups = groupByCategory(list, true);
     let html = "";
     groups.forEach(function (g) {
       const open = openCatKey === g.key;
@@ -588,7 +607,7 @@ function renderTiles() {
           '<span class="cat-count">' + g.items.length + "</span>" +
           '<span class="cat-chevron">' + icon("chevron") + "</span>" +
         "</button>" +
-        (open ? '<div class="tile-grid cat-body">' + g.items.map(tileHtml).join("") + "</div>" : "") +
+        (open ? '<div class="tile-grid cat-body">' + (g.items.length ? g.items.map(tileHtml).join("") : '<p class="empty">Wala pang paninda dito. Lagyan sa Paninda tab.</p>') + "</div>" : "") +
         "</div>";
     });
     catBox.innerHTML = html || '<p class="empty">Wala pang paninda.</p>';
@@ -744,7 +763,7 @@ function renderProducts() {
     html = matches.map(productRowHtml).join("");       // searching: a plain list
   } else {
     // folders by category, closed until you tap them
-    groupByCategory(matches).forEach(function (g) {
+    groupByCategory(matches, true).forEach(function (g) {
       const open = !!openProdCats[g.key];
       const col = categoryColor(g.name);
       const restock = g.items.filter(function (p) { return p.stock <= p.reorder; }).length;
@@ -756,7 +775,7 @@ function renderProducts() {
           '<span class="cat-count">' + g.items.length + "</span>" +
           '<span class="cat-chevron">' + icon("chevron") + "</span>" +
         "</button>" +
-        (open ? '<div class="cat-rows">' + g.items.map(productRowHtml).join("") + "</div>" : "") +
+        (open ? '<div class="cat-rows">' + (g.items.length ? g.items.map(productRowHtml).join("") : '<p class="empty">Wala pang paninda dito.</p>') + "</div>" : "") +
         "</div>";
     });
   }
@@ -767,6 +786,7 @@ function renderProducts() {
     ? lowCount + " paninda ang mababa ang kita (mas mababa sa " + peso(settings.minKita || 0) + " bawat piraso). I-type ang \"mababa\" sa search para makita sila."
     : "";
   renderCategoryOptions();
+  renderCategoryManager();
 }
 
 // Today's total and number of transactions shown at the top of the page
@@ -2190,6 +2210,97 @@ byId("set-min-kita").addEventListener("change", function () {
   fillPriceSettings();
   renderProducts();
 });
+
+
+/* ---------- 11e. MGA KATEGORYA: add, rename, delete ---------- */
+let editingCategory = null;           // the name being edited, or null when adding a new one
+
+function categoryCount(key) {
+  return products.filter(function (p) { return categoryName(p).toLowerCase() === key; }).length;
+}
+
+function renderCategoryManager() {
+  const names = allCategoryNames();
+  byId("cat-manage").innerHTML = names.length === 0
+    ? '<p class="empty">Wala pang kategorya. Tap ang Magdagdag ng kategorya.</p>'
+    : names.map(function (n) {
+        const col = categoryColor(n);
+        const count = categoryCount(n.toLowerCase());
+        return '<div class="cat-manage-row">' +
+          '<span class="cat-icon" style="background:' + col[0] + ";color:" + col[1] + '">' + icon("folder") + "</span>" +
+          '<span class="cat-name">' + escapeHtml(n) + "</span>" +
+          '<span class="cat-count">' + count + "</span>" +
+          '<button type="button" class="txn-btn" data-edit-cat="' + escapeHtml(n) + '">I-edit</button></div>';
+      }).join("");
+}
+
+function openCategorySheet(name) {
+  editingCategory = name;
+  byId("cat-sheet-title").textContent = name ? "I-edit ang kategorya" : "Bagong kategorya";
+  byId("cat-name").value = name || "";
+  byId("cat-message").textContent = "";
+  byId("cat-delete").hidden = !name;
+  byId("cat-note").textContent = name
+    ? "Kapag pinalitan ang pangalan, susunod lahat ng " + categoryCount(name.toLowerCase()) + " paninda dito."
+    : "Pagkatapos, piliin ito sa Kategorya ng bawat paninda.";
+  openSheet("cat-overlay");
+  byId("cat-name").focus();
+}
+
+function saveCategory() {
+  const name = categoryName({ category: byId("cat-name").value });
+  const msg = byId("cat-message");
+  if (!name) { msg.textContent = "Isulat ang pangalan ng kategorya."; return; }
+  const key = name.toLowerCase();
+  const oldKey = editingCategory ? editingCategory.toLowerCase() : null;
+
+  if (oldKey === null) {                                   // ADD
+    if (allCategoryNames().some(function (n) { return n.toLowerCase() === key; })) {
+      msg.textContent = "May kategorya nang ganyan ang pangalan.";
+      return;
+    }
+    settings.categories = savedCategories().concat([name]);
+  } else {                                                 // EDIT / RENAME
+    const exists = key !== oldKey && allCategoryNames().some(function (n) { return n.toLowerCase() === key; });
+    if (exists && !confirm("May \"" + name + "\" na. Pagsamahin ang dalawang kategorya?")) { return; }
+    products.forEach(function (p) {
+      if (categoryName(p).toLowerCase() === oldKey) { p.category = name; }
+    });
+    // keep the saved list tidy: drop the old name, add the new one once
+    settings.categories = savedCategories().filter(function (n) { return n.toLowerCase() !== oldKey && n.toLowerCase() !== key; }).concat([name]);
+    if (openCatKey === oldKey) { openCatKey = key; }
+    if (openProdCats[oldKey] !== undefined) { openProdCats[key] = openProdCats[oldKey]; delete openProdCats[oldKey]; }
+  }
+  saveData();
+  closeSheet("cat-overlay");
+  renderAll();
+}
+
+function deleteCategory() {
+  if (!editingCategory) { return; }
+  const key = editingCategory.toLowerCase();
+  const count = categoryCount(key);
+  if (!confirm("Burahin ang kategoryang \"" + editingCategory + "\"?" +
+      (count > 0 ? "\n\nAng " + count + " paninda ay mapupunta sa \"Walang kategorya\". Hindi mabubura ang paninda." : ""))) { return; }
+  products.forEach(function (p) {
+    if (categoryName(p).toLowerCase() === key) { delete p.category; }
+  });
+  settings.categories = savedCategories().filter(function (n) { return n.toLowerCase() !== key; });
+  if (openCatKey === key) { openCatKey = null; }
+  delete openProdCats[key];
+  saveData();
+  closeSheet("cat-overlay");
+  renderAll();
+}
+
+byId("cat-add-btn").addEventListener("click", function () { openCategorySheet(null); });
+byId("cat-manage").addEventListener("click", function (event) {
+  const b = event.target.closest("[data-edit-cat]");
+  if (b) { openCategorySheet(b.getAttribute("data-edit-cat")); }
+});
+byId("cat-form").addEventListener("submit", function (event) { event.preventDefault(); saveCategory(); });
+byId("cat-cancel").addEventListener("click", function () { closeSheet("cat-overlay"); });
+byId("cat-delete").addEventListener("click", deleteCategory);
 
 
 /* ---------- 11d. UTANG ----------
